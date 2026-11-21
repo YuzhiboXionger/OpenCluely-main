@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>选择截图区域</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      /* Keep the normal pointer; the command bar shows the hint instead. */
+      cursor: default;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    document.addEventListener('click', (event) => {
+      if (window.regionAPI) {
+        window.regionAPI.reportPoint({
+          x: Math.round(event.clientX),
+          y: Math.round(event.clientY)
+        });
+      }
+    });
+
+    document.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      if (window.regionAPI) window.regionAPI.cancel();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (window.regionAPI) window.regionAPI.cancel();
+      }
+    });
+  </script>
+</body>
+</html>

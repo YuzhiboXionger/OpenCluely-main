@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DO_BUILD=0
+DO_RUN=1
+USE_CI=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OS_NAME="unknown"
+PLATFORM_BUILD_SCRIPT="build"
+
+print_header() {
+  echo "========================================"
+  echo " OpenCluely Setup"
+  echo "========================================"
+}
+
+usage() {
+  cat <<EOF
+Usage: ./setup.sh [options]
+
+This script will:
+1. Create .env from env.example when needed
+2. Install Node dependencies
+3. Optionally build the app
+4. Optionally run OpenCluely
+
+Options:
+  --build                 Build a distributable for this OS
+  --no-run                Do not start the app after setup
+  --run                   Start the app after setup (default)
+  --ci                    Use 'npm ci' instead of 'npm install'
+  -h, --help              Show this help
+
+Environment variables:
+  DEEPSEEK_API_KEY        If provided, writes into .env
+
+Example:
+  DEEPSEEK_API_KEY=your_key_here ./setup.sh
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --build) DO_BUILD=1 ;;
+    --no-run) DO_RUN=0 ;;
+    --run) DO_RUN=1 ;;
+    --ci) USE_CI=1 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $arg"; usage; exit 1 ;;
+  esac
+done
+
+print_header
+cd "$SCRIPT_DIR"
+
+detect_os() {
+  local uname_out
+  uname_out=$(uname -s || echo "unknown")
+  case "$uname_out" in
+    Linux*) OS_NAME="linux" ;;
+    Darwin*) OS_NAME="macos" ;;
+    CYGWIN*|MINGW*|MSYS*) OS_NAME="windows" ;;
+    *) OS_NAME="unknown" ;;
+  esac
+
+  case "$OS_NAME" in
+    macos) PLATFORM_BUILD_SCRIPT="build:mac" ;;
+    windows) PLATFORM_BUILD_SCRIPT="build:win" ;;
+    linux) PLATFORM_BUILD_SCRIPT="build:linux" ;;
+    *) PLATFORM_BUILD_SCRIPT="build" ;;
+  esac
+}
+
+require_command() {
+  local cmd="$1"
+  local message="$2"
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: ${message}"
+    exit 1
+  fi
+}
+
+ensure_env_file() {
+  if [[ ! -f .env ]]; then
+    if [[ -f env.example ]]; then
+      echo "Creating .env from env.example"
+      cp env.example .env
+    else
+      echo "Error: env.example is missing"
+      exit 1
+    fi
+  fi
+}
+
+upsert_env() {
+  local key="$1"
+  local value="$2"
+
+  if grep -q "^${key}=" .env 2>/dev/null; then
+    perl -0pi -e "s|^${key}=.*\$|${key}=${value}|m" .env
+  else
+    printf "%s=%s\n" "$key" "$value" >> .env
+  fi
+}
+
+ensure_deepseek_key() {
+  if [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
+    upsert_env "DEEPSEEK_API_KEY" "$DEEPSEEK_API_KEY"
+  fi
+
+  # DEEPSEEK_API_KEY is now OPTIONAL during setup. The app's first-run
+  # flow will auto-open the Settings window if the key is missing and
+  # guide the user to enter it. Hard-blocking at install time makes
+  # CI / packaging / scripted installs harder for no real benefit.
+
+  if ! grep -q '^DEEPSEEK_API_KEY=' .env 2>/dev/null; then
+    # Make sure the key exists in .env even if unset — the app reads
+    # this on first-run to know whether onboarding is needed.
+    echo "DEEPSEEK_API_KEY=your_deepseek_api_key_here" >> .env
+  fi
+
+  if grep -q 'your_deepseek_api_key_here' .env 2>/dev/null; then
+    echo ""
+    echo "=========================================="
+    echo " No DeepSeek API key detected"
+    echo "=========================================="
+    echo ""
+    echo "The app will start, but AI features won't work until you set"
+    echo "DEEPSEEK_API_KEY in .env (or via the Settings window on first launch)."
+    echo ""
+    echo "Get a key from: https://platform.deepseek.com/api_keys"
+    echo ""
+    echo "Setup will continue without blocking."
+    echo ""
+  fi
+}
+
+install_node_deps() {
+  if [[ -f package-lock.json && "$USE_CI" -eq 1 ]]; then
+    echo "Installing Node dependencies with npm ci"
+    npm ci
+  else
+    echo "Installing Node dependencies with npm install"
+    npm install
+  fi
+}
+
+build_app() {
+  if [[ "$DO_BUILD" -eq 1 ]]; then
+    echo "Building app for $OS_NAME with npm run $PLATFORM_BUILD_SCRIPT"
+    npm run "$PLATFORM_BUILD_SCRIPT"
+  fi
+}
+
+run_app() {
+  if [[ "$DO_RUN" -eq 1 ]]; then
+    echo "Starting app"
+    npm start
+  else
+    echo "Setup complete. Skipping run."
+  fi
+}
+
+detect_os
+echo "Detected OS: $OS_NAME"
+require_command node "Node.js 18+ is required."
+require_command npm "npm is required."
+echo "Node: $(node -v)"
+echo "npm:  $(npm -v)"
+
+ensure_env_file
+ensure_deepseek_key
+install_node_deps
+build_app
+run_app
