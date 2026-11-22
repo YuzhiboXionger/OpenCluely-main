@@ -105,6 +105,10 @@ const llmService = require("./src/services/llm.service");
 const windowManager = require("./src/managers/window.manager");
 const sessionManager = require("./src/managers/session.manager");
 
+// Order used by the Ctrl/Cmd+Tab language cycler; keep in sync with the
+// language dropdowns in index.html and settings.html.
+const CODING_LANGUAGES = ["cpp", "c", "python", "java", "javascript", "go", "dart"];
+
 class ApplicationController {
   constructor() {
     this.isReady = false;
@@ -407,6 +411,7 @@ class ApplicationController {
     const shortcuts = {
       "CommandOrControl+Shift+S": () => this.triggerScreenshotOCR(),
       "CommandOrControl+T": () => this.toggleSpeechRecognition(),
+      "CommandOrControl+Tab": () => this.cycleCodingLanguage(),
       "CommandOrControl+Alt+T": () => this.startRegionScreenshot(),
       "CommandOrControl+H": () => this.triggerScreenshotOCR(),
       "CommandOrControl+Shift+V": () => windowManager.toggleVisibility(),
@@ -1824,6 +1829,14 @@ class ApplicationController {
     windowManager.broadcastToAllWindows("answer-opacity-changed", next);
     this.persistEnvUpdates({ ANSWER_OPACITY: String(next) });
     logger.info("Answer opacity adjusted via shortcut", { from: current, to: next });
+  }
+
+  cycleCodingLanguage() {
+    const current = this.codingLanguage;
+    const index = CODING_LANGUAGES.indexOf(current);
+    const next = CODING_LANGUAGES[(index + 1) % CODING_LANGUAGES.length];
+    this.saveSettings({ codingLanguage: next });
+    logger.info("Coding language cycled via shortcut", { from: current, to: next });
   }
 
   moveAnswerContent(dx, dy) {

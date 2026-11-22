@@ -182,6 +182,7 @@ ANSWER_OPACITY=40
 | `Ctrl/Cmd + H` | 搜题（截图识别） |
 | `Ctrl/Cmd + Alt + T` | 区域截图（两击左上角，两击右下角，`Esc` 取消） |
 | `Ctrl/Cmd + T` | 开始 / 停止语音识别 |
+| `Ctrl/Cmd + Tab` | 循环切换编程语言（C++ → C → Python → Java → JavaScript → Go → Dart） |
 | `Ctrl/Cmd + Shift + V` | 显示 / 隐藏所有窗口 |
 | `Ctrl/Cmd + .` 或 `Alt + A` | 切换交互模式（鼠标穿透） |
 | `Ctrl/Cmd + Shift + C` | 打开聊天窗 |
