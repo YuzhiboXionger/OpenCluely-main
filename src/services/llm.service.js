@@ -60,6 +60,14 @@ class LLMService {
     });
   }
 
+  /** 质量优先 / 速度优先。速度优先关闭推理思考，显著降低首 token 延迟。 */
+  getPriority() {
+    const raw = String(
+      process.env.LLM_PRIORITY || config.get('llm.deepseek.priority') || 'speed'
+    ).trim().toLowerCase();
+    return raw === 'quality' ? 'quality' : 'speed';
+  }
+
   /** Translate the app's generation settings into Chat Completions fields. */
   getGenerationConfig(overrides = {}) {
     const defaults = config.get('llm.deepseek.generation') || {};
@@ -77,8 +85,10 @@ class LLMService {
     if (merged.maxOutputTokens !== undefined && merged.maxOutputTokens !== null) body.max_tokens = merged.maxOutputTokens;
     // Reasoning models emit hidden reasoning tokens that count against
     // max_tokens. For pure transcription that budget must go to the text, so
-    // the caller can switch thinking off.
-    if (merged.disableThinking) body.thinking = { type: 'disabled' };
+    // the caller can switch thinking off. 速度优先模式下，所有回答链路也默认关闭思考。
+    if (merged.disableThinking || this.getPriority() === 'speed') {
+      body.thinking = { type: 'disabled' };
+    }
     return body;
   }
 

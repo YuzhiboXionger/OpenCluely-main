@@ -1838,6 +1838,7 @@ class ApplicationController {
     return {
       codingLanguage: this.codingLanguage || "cpp",
       activeSkill: this.activeSkill || "dsa",
+      llmPriority: llmService.getPriority(),
       appIcon: this.appIcon || "terminal",
       selectedIcon: this.appIcon || "terminal",
       windowGap: windowManager.windowGap,
@@ -1927,6 +1928,10 @@ class ApplicationController {
         process.env.ANSWER_OPACITY = String(opacity);
         windowManager.broadcastToAllWindows("answer-opacity-changed", opacity);
       }
+      // 回答速度偏好：立即生效（下一次请求就会按新值决定是否关闭推理思考）。
+      if (["speed", "quality"].includes(settings.llmPriority)) {
+        process.env.LLM_PRIORITY = settings.llmPriority;
+      }
 
       // ── 岗位 / JD / 简历：写入 userData/profile.json，不进入 .env ──
       // 简历文本较长且含多行，放环境变量会破坏 dotenv 格式。
@@ -1970,6 +1975,9 @@ class ApplicationController {
       }
       if (settings.answerOpacity !== undefined) {
         envUpdates.ANSWER_OPACITY = String(this.normalizeAnswerOpacity(settings.answerOpacity));
+      }
+      if (["speed", "quality"].includes(settings.llmPriority)) {
+        envUpdates.LLM_PRIORITY = settings.llmPriority;
       }
 
       const prevDoubaoConfig = [

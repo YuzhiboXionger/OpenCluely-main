@@ -371,6 +371,25 @@
 
             <div class="settings-section">
                 <div class="settings-section-title">
+                    <i class="fas fa-bolt"></i>
+                    回答速度
+                </div>
+                <div class="settings-section-content">
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">回答模式</div>
+                            <div class="settings-item-description">速度优先会关闭模型推理思考，回答更快；质量优先允许更充分的推理，适合复杂题。该设置对聊天、语音和截图解答都生效（截图转写始终走最快路径）</div>
+                        </div>
+                        <select class="input-field" id="llmPriority">
+                            <option value="speed">速度优先</option>
+                            <option value="quality">质量优先</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">
                     <i class="fas fa-user-tie"></i>
                     岗位与简历
                 </div>

@@ -48,6 +48,8 @@ class ConfigManager {
           maxRetries: 1,
           timeout: 60000,
           fallbackEnabled: true,
+          // speed = 关闭推理思考，首 token 更快；quality = 保留思考，复杂题更稳。
+          priority: 'speed',
           generation: {
             temperature: 0.7,
             topP: 0.9,

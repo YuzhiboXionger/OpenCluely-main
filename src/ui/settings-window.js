@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const answerOpacityValue = document.getElementById('answerOpacityValue');
     const codingLanguageSelect = document.getElementById('codingLanguage');
     const activeSkillSelect = document.getElementById('activeSkill');
+    const llmPrioritySelect = document.getElementById('llmPriority');
     const iconGrid = document.getElementById('iconGrid');
     const jobTitleInput = document.getElementById('jobTitle');
     const jobDescriptionInput = document.getElementById('jobDescription');
@@ -109,6 +110,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (settings.activeSkill && activeSkillSelect) activeSkillSelect.value = settings.activeSkill;
+
+        if (llmPrioritySelect) {
+            llmPrioritySelect.value = settings.llmPriority === 'quality' ? 'quality' : 'speed';
+        }
 
         // Job title / JD / injection toggle (resume text is loaded separately
         // via getProfile so the full text only goes to this window).
@@ -270,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (answerOpacityInput) settings.answerOpacity = answerOpacityInput.value;
         if (codingLanguageSelect) settings.codingLanguage = codingLanguageSelect.value;
         if (activeSkillSelect) settings.activeSkill = activeSkillSelect.value;
+        if (llmPrioritySelect) settings.llmPriority = llmPrioritySelect.value;
         
         window.api.send('save-settings', settings);
     };
@@ -285,7 +291,8 @@ document.addEventListener('DOMContentLoaded', () => {
         doubaoEnableNonstreamInput,
         deepseekKeyInput,
         windowGapInput,
-        answerOpacityInput
+        answerOpacityInput,
+        llmPrioritySelect
     ];
 
     // Live preview while dragging the slider; the value is persisted on change.
