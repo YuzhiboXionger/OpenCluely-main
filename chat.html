@@ -914,6 +914,9 @@
 
       // Show thinking indicator
       function showThinkingIndicator() {
+        // 已经在流式输出时不要再插入“思考中”，否则会残留一个多余气泡
+        if (activeStream) return;
+
         const thinkingDiv = document.createElement('div');
         thinkingDiv.className = 'message assistant thinking';
         thinkingDiv.id = 'thinking-indicator';
@@ -938,6 +941,97 @@
         const thinkingIndicator = document.getElementById('thinking-indicator');
         if (thinkingIndicator) {
           thinkingIndicator.remove();
+        }
+      }
+
+      // ── 流式渲染：首个 delta 到达就显示内容，不必等整段生成完 ──
+      let activeStream = null;      // { messageId, raw, messageDiv, textDiv }
+      let latestStreamId = null;    // 最近一次 start 的 messageId，用于丢弃迟到的旧增量
+      let streamRenderTimer = null;
+
+      function resetActiveStream() {
+        if (streamRenderTimer) {
+          clearTimeout(streamRenderTimer);
+          streamRenderTimer = null;
+        }
+        if (activeStream && activeStream.messageDiv && activeStream.messageDiv.parentNode) {
+          activeStream.messageDiv.remove();
+        }
+        activeStream = null;
+      }
+
+      function ensureStreamBubble(messageId) {
+        if (activeStream && activeStream.messageId === messageId) return activeStream;
+        resetActiveStream();
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message assistant streaming';
+
+        const timeDiv = document.createElement('div');
+        timeDiv.className = 'message-time';
+        timeDiv.textContent = new Date().toLocaleTimeString();
+
+        const textDiv = document.createElement('div');
+        textDiv.className = 'message-text';
+
+        messageDiv.appendChild(timeDiv);
+        messageDiv.appendChild(textDiv);
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        activeStream = { messageId, raw: '', messageDiv, textDiv };
+        return activeStream;
+      }
+
+      function flushStreamRender() {
+        streamRenderTimer = null;
+        if (!activeStream) return;
+        // 流式阶段只写纯文本，避免每个 token 都跑一次 Markdown/代码解析
+        activeStream.textDiv.textContent = activeStream.raw;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+
+      function handleStreamStart(data) {
+        latestStreamId = data && data.messageId ? data.messageId : null;
+        // 只清理旧的流式气泡；新气泡等首个 delta 再做，避免出现长时间空白消息
+        if (activeStream && activeStream.messageId !== latestStreamId) {
+          resetActiveStream();
+        }
+      }
+
+      function handleStreamChunk(data) {
+        if (!data || !data.delta) return;
+        // 丢弃迟到的旧请求增量，避免覆盖当前正在输出的回答
+        if (latestStreamId && data.messageId && data.messageId !== latestStreamId) return;
+        if (!activeStream || activeStream.messageId !== data.messageId) {
+          hideThinkingIndicator();
+          ensureStreamBubble(data.messageId);
+        }
+        activeStream.raw += data.delta;
+        if (!streamRenderTimer) {
+          // 约 25fps 刷新，既保持“逐字出现”的观感又避免每个 token 重排
+          streamRenderTimer = setTimeout(flushStreamRender, 40);
+        }
+      }
+
+      function handleStreamFinal(data) {
+        hideThinkingIndicator();
+        const messageId = data && data.messageId;
+
+        // 迟到的旧响应：仍然展示最终文本，但不打断当前正在流式输出的气泡
+        if (activeStream && messageId && activeStream.messageId !== messageId) {
+          if (data && data.response) renderAssistantResponse(data.response);
+          return;
+        }
+
+        const streamedText = activeStream ? activeStream.raw : '';
+        resetActiveStream();
+        latestStreamId = null;
+        // 最终事件以完整文本为准（语音路径可能对最终文案做过清洗）
+        if (data && data.response) {
+          renderAssistantResponse(data.response);
+        } else if (streamedText && streamedText.trim()) {
+          renderAssistantResponse(streamedText);
         }
       }
 
@@ -1208,12 +1302,21 @@
           addMessage('Session memory has been cleared', 'system');
         });
 
+        // 流式事件：start 只做状态清理，chunk 逐步渲染，final 统一重绘
+        if (whysperAPI.onTranscriptionLlmResponseStart) {
+          whysperAPI.onTranscriptionLlmResponseStart((event, data) => {
+            handleStreamStart(data);
+          });
+        }
+        if (whysperAPI.onTranscriptionLlmResponseChunk) {
+          whysperAPI.onTranscriptionLlmResponseChunk((event, data) => {
+            handleStreamChunk(data);
+          });
+        }
+
         // Replace transcription LLM handler to store text + snippets
         whysperAPI.onTranscriptionLlmResponse((event, data) => {
-          if (data && data.response) {
-            try { hideThinkingIndicator(); } catch (_) {}
-            renderAssistantResponse(data.response);
-          }
+          handleStreamFinal(data);
         });
       }
 

@@ -600,8 +600,25 @@
                 // Set up show-loading event listener
                 window.electronAPI.onShowLoading(() => {
                     console.log('[LLM-RESPONSE] show-loading received');
+                    resetActiveStream();
                     showLoadingState();
                 });
+
+                // 流式输出：主进程转发增量文本，这里边收边显示
+                if (typeof window.electronAPI.onTranscriptionLlmResponseStart === 'function') {
+                    window.electronAPI.onTranscriptionLlmResponseStart((event, data) => {
+                        const incomingId = data && data.messageId ? data.messageId : null;
+                        if (activeStream && latestStreamId && incomingId && incomingId !== latestStreamId) {
+                            resetActiveStream();
+                        }
+                        latestStreamId = incomingId;
+                    });
+                }
+                if (typeof window.electronAPI.onTranscriptionLlmResponseChunk === 'function') {
+                    window.electronAPI.onTranscriptionLlmResponseChunk((event, data) => {
+                        handleStreamChunk(data);
+                    });
+                }
                 
                 // Listen for LLM response
                 window.electronAPI.onDisplayLlmResponse(function() {
@@ -625,10 +642,13 @@
                         if (!response) {
                             console.error('[LLM-RESPONSE] No response content found!');
                             hideLoadingState();
+                            resetActiveStream();
                             return;
                         }
                         
                         hideLoadingState();
+                        // 丢掉流式阶段的纯文本占位，用最终完整内容重新排版
+                        resetActiveStream();
                         displayResponse(actualData);
                         setupScrolling();
                         setTimeout(verifyDisplayState, 500);
@@ -669,6 +689,65 @@
                 console.log('Loading state hidden');
             } else {
                 console.error('Loading element not found!');
+            }
+        }
+
+        // ── 流式渲染：首个 delta 到达就显示纯文本，final 再统一排版 ──
+        let activeStream = null;     // { messageId, raw, fullEl }
+        let latestStreamId = null;
+        let streamFlushTimer = null;
+
+        function resetActiveStream() {
+            if (streamFlushTimer) {
+                clearTimeout(streamFlushTimer);
+                streamFlushTimer = null;
+            }
+            if (activeStream && activeStream.fullEl) {
+                activeStream.fullEl.style.whiteSpace = '';
+                activeStream.fullEl.textContent = '';
+            }
+            activeStream = null;
+            latestStreamId = null;
+        }
+
+        function ensureStreamPanel() {
+            if (activeStream) return activeStream;
+
+            hideLoadingState();
+            const responseElement = document.getElementById('response-content');
+            const splitLayout = document.getElementById('split-layout');
+            const fullContent = document.getElementById('full-content');
+            const fullMarkdown = document.getElementById('full-markdown');
+
+            if (!responseElement || !fullContent || !fullMarkdown) return null;
+
+            responseElement.classList.remove('hidden');
+            if (splitLayout) splitLayout.classList.add('hidden');
+            fullContent.classList.remove('hidden');
+            fullMarkdown.style.whiteSpace = 'pre-wrap';
+
+            activeStream = { messageId: latestStreamId, raw: '', fullEl: fullMarkdown };
+            return activeStream;
+        }
+
+        function flushStreamRender() {
+            streamFlushTimer = null;
+            if (!activeStream) return;
+            activeStream.fullEl.textContent = activeStream.raw;
+            const scroller = document.querySelector('.full-content-inner');
+            if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        }
+
+        function handleStreamChunk(data) {
+            if (!data || !data.delta) return;
+            // 丢弃迟到的旧请求增量
+            if (latestStreamId && data.messageId && data.messageId !== latestStreamId) return;
+            const stream = ensureStreamPanel();
+            if (!stream) return;
+            stream.raw += data.delta;
+            if (!streamFlushTimer) {
+                // 约 25fps 刷新，流式阶段不做 Markdown 解析
+                streamFlushTimer = setTimeout(flushStreamRender, 40);
             }
         }
 

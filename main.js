@@ -295,6 +295,9 @@ class ApplicationController {
         currentDesktop: "detected",
       });
 
+      // 预热到 DeepSeek 的长连接，让第一次真实提问跳过 TLS 握手。
+      llmService.warmUpConnection().catch(() => {});
+
       sessionManager.addEvent("Application started");
     } catch (error) {
       this.starting = false;
@@ -1344,9 +1347,8 @@ class ApplicationController {
 
   async processWithLLM(text, sessionHistory) {
     try {
-      // Add user input to session memory
-      sessionManager.addUserInput(text, 'llm_input');
-
+      // 当前输入已由 send-chat-message 写入 session memory，
+      // 这里不再重复写入，否则同一句话会在上下文里出现两次。
       // Check if current skill needs programming language context
       const skillsRequiringProgrammingLanguage = ['dsa'];
       const needsProgrammingLanguage = skillsRequiringProgrammingLanguage.includes(this.activeSkill);
@@ -1375,6 +1377,8 @@ class ApplicationController {
         skill: this.activeSkill,
         programmingLanguage: needsProgrammingLanguage ? this.codingLanguage : 'not applicable',
         processingTime: llmResult.metadata.processingTime,
+        firstTokenMs: llmResult.metadata.firstTokenMs,
+        promptChars: llmResult.metadata.promptChars,
         responsePreview: llmResult.response.substring(0, 200) + "...",
       });
 
@@ -1579,7 +1583,9 @@ class ApplicationController {
         responseLength: llmResult.response.length,
         skill: this.activeSkill,
         programmingLanguage: needsProgrammingLanguage ? this.codingLanguage : 'not applicable',
-        processingTime: llmResult.metadata.processingTime
+        processingTime: llmResult.metadata.processingTime,
+        firstTokenMs: llmResult.metadata.firstTokenMs,
+        promptChars: llmResult.metadata.promptChars
       });
 
     } catch (error) {

@@ -4,6 +4,14 @@ const config = require('../core/config');
 const profileService = require('./profile.service');
 const { promptLoader } = require('../../prompt-loader');
 
+// 全局共享的 keep-alive 连接池：以前每次请求都新建 Agent，
+// 等于每次都重新做一遍 DNS/TCP/TLS 握手。复用 socket 可以省掉这部分固定延迟。
+const sharedHttpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 6,
+  keepAliveMsecs: 30000
+});
+
 /**
  * LLM service backed by DeepSeek's OpenAI-compatible Chat Completions API.
  *
@@ -361,12 +369,13 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
 
     try {
       const chatRequest = this.buildChatRequest(text, activeSkill, sessionMemory, programmingLanguage);
+      const streamMetrics = {};
 
       const fullText = await this.executeStreamingRequest(chatRequest, (delta) => {
         if (typeof onDelta === 'function' && delta) {
           onDelta(delta);
         }
-      });
+      }, streamMetrics);
 
       const finalResponse = programmingLanguage
         ? this.enforceProgrammingLanguage(fullText, programmingLanguage)
@@ -376,6 +385,8 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
         activeSkill,
         textLength: text.length,
         responseLength: finalResponse.length,
+        firstTokenMs: streamMetrics.firstTokenMs,
+        promptChars: streamMetrics.promptChars,
         requestId: this.requestCount
       });
 
@@ -387,7 +398,9 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
           processingTime: Date.now() - startTime,
           requestId: this.requestCount,
           usedFallback: false,
-          streamed: true
+          streamed: true,
+          firstTokenMs: streamMetrics.firstTokenMs ?? null,
+          promptChars: streamMetrics.promptChars ?? null
         }
       };
     } catch (error) {
@@ -469,12 +482,13 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
 
     try {
       const chatRequest = this.buildIntelligentTranscriptionRequest(text, activeSkill, sessionMemory, programmingLanguage);
+      const streamMetrics = {};
 
       const fullText = await this.executeStreamingRequest(chatRequest, (delta) => {
         if (typeof onDelta === 'function' && delta) {
           onDelta(delta);
         }
-      });
+      }, streamMetrics);
 
       const finalResponse = programmingLanguage
         ? this.enforceProgrammingLanguage(fullText, programmingLanguage)
@@ -484,6 +498,8 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
         activeSkill,
         textLength: text.length,
         responseLength: finalResponse.length,
+        firstTokenMs: streamMetrics.firstTokenMs,
+        promptChars: streamMetrics.promptChars,
         requestId: this.requestCount
       });
 
@@ -496,7 +512,9 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
           requestId: this.requestCount,
           usedFallback: false,
           streamed: true,
-          isTranscriptionResponse: true
+          isTranscriptionResponse: true,
+          firstTokenMs: streamMetrics.firstTokenMs ?? null,
+          promptChars: streamMetrics.promptChars ?? null
         }
       };
     } catch (error) {
@@ -536,6 +554,60 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
     }
   }
 
+  /**
+   * 调用方在请求前已经把当前输入写入 session memory，随后又会把它作为
+   * 新消息追加一次。这里把历史里最后一条相同的 user 输入去掉，避免同一句话
+   * 在 prompt 里出现两遍（既浪费 token，也拉高首 token 延迟）。
+   */
+  _dropPendingUserEcho(events, text) {
+    const needle = String(text || '').trim();
+    if (!needle) return events;
+
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i];
+      if (event.role === 'user' && typeof event.content === 'string' && event.content.trim() === needle) {
+        return events.slice(0, i).concat(events.slice(i + 1));
+      }
+    }
+    return events;
+  }
+
+  /**
+   * 历史上下文预算：最近几轮完整保留，更早的内容按字符预算截断，
+   * 过长 assistant 回答只保留开头部分，防止旧答案挤占每次请求。
+   */
+  _applyHistoryBudget(events, budget = null, keepRecent = 4, assistantCap = 1500) {
+    if (!Array.isArray(events) || events.length === 0) return [];
+
+    const maxChars = budget || Number(process.env.CHAT_HISTORY_CHAR_BUDGET) || 6000;
+    const keepCount = Math.min(keepRecent, events.length);
+    const boundary = events.length - keepCount;
+    const recent = events.slice(boundary);
+    const older = events.slice(0, boundary);
+
+    const keptOlder = [];
+    let used = 0;
+
+    for (let i = older.length - 1; i >= 0; i--) {
+      const event = older[i];
+      if (event.role === 'system') continue;
+      if (!event.content || typeof event.content !== 'string') continue;
+
+      let content = event.content.trim();
+      if (!content) continue;
+
+      if (event.role === 'model' && content.length > assistantCap) {
+        content = content.slice(0, assistantCap) + '…';
+      }
+      if (used + content.length > maxChars) break;
+
+      used += content.length;
+      keptOlder.unshift({ ...event, content });
+    }
+
+    return keptOlder.concat(recent);
+  }
+
   buildChatRequest(text, activeSkill, sessionMemory, programmingLanguage) {
     const sessionManager = require('../managers/session.manager');
     const messages = [];
@@ -545,6 +617,8 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
 
     if (sessionManager && typeof sessionManager.getConversationHistory === 'function') {
       conversationHistory = sessionManager.getConversationHistory(15);
+      conversationHistory = this._dropPendingUserEcho(conversationHistory, text);
+      conversationHistory = this._applyHistoryBudget(conversationHistory);
       const skillContext = sessionManager.getSkillContext(activeSkill, programmingLanguage);
       systemPrompt = skillContext.skillPrompt || '';
     } else {
@@ -664,7 +738,9 @@ Answering rules: if it is a coding or DSA problem, provide a complete, runnable 
     const hasProfileContext = this._appendProfileContext(messages);
 
     if (sessionManager && typeof sessionManager.getConversationHistory === 'function') {
-      const conversationHistory = sessionManager.getConversationHistory(10);
+      let conversationHistory = sessionManager.getConversationHistory(10);
+      conversationHistory = this._dropPendingUserEcho(conversationHistory, cleanText);
+      conversationHistory = this._applyHistoryBudget(conversationHistory);
       for (const event of conversationHistory) {
         if (event.role === 'system') continue;
         if (!event.content || typeof event.content !== 'string') continue;
@@ -863,7 +939,7 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
     throw finalError;
   }
 
-  async executeStreamingRequest(chatRequest, onDelta) {
+  async executeStreamingRequest(chatRequest, onDelta, metrics = null) {
     const maxRetries = config.get('llm.deepseek.maxRetries') || 3;
     const timeout = config.get('llm.deepseek.timeout') || 60000;
     const modelsToTry = this._modelsToTry();
@@ -873,10 +949,15 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
     for (const modelName of modelsToTry) {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-          const fullText = await this._streamChatCompletion(modelName, chatRequest, timeout, onDelta);
+          const fullText = await this._streamChatCompletion(modelName, chatRequest, timeout, onDelta, metrics);
 
           if (!fullText) {
             throw new Error('Empty streamed response from DeepSeek API');
+          }
+
+          if (metrics && typeof metrics === 'object') {
+            metrics.attempts = attempt;
+            metrics.usedFallbackModel = modelName !== modelsToTry[0];
           }
 
           logger.debug('DeepSeek streaming request successful', {
@@ -943,7 +1024,9 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
     const body = this._buildChatBody(modelName, chatRequest, false);
     const { headers, postData } = this._requestOptions(body);
     const url = `${this.baseUrl}/chat/completions`;
-    const agent = new https.Agent({ keepAlive: true, maxSockets: 1 });
+    const agent = sharedHttpsAgent;
+    const requestStart = Date.now();
+    const promptChars = this._promptCharCount(chatRequest);
 
     return new Promise((resolve, reject) => {
       const req = https.request(url, { method: 'POST', headers, timeout, agent }, (res) => {
@@ -972,6 +1055,14 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
               return;
             }
 
+            logger.info('LLM completion timing', {
+              model: modelName,
+              promptChars,
+              totalMs: Date.now() - requestStart,
+              responseLength: text.length,
+              requestId: this.requestCount
+            });
+
             resolve(text.trim());
           } catch (parseError) {
             logger.error('Failed to parse DeepSeek response', {
@@ -995,11 +1086,19 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
     });
   }
 
-  _streamChatCompletion(modelName, chatRequest, timeout, onDelta) {
+  _streamChatCompletion(modelName, chatRequest, timeout, onDelta, metrics = null) {
     const body = this._buildChatBody(modelName, chatRequest, true);
     const { headers, postData } = this._requestOptions(body);
     const url = `${this.baseUrl}/chat/completions`;
-    const agent = new https.Agent({ keepAlive: true, maxSockets: 1 });
+    const agent = sharedHttpsAgent;
+    const requestStart = Date.now();
+    const promptChars = this._promptCharCount(chatRequest);
+
+    logger.debug('LLM stream request start', {
+      model: modelName,
+      promptChars,
+      requestId: this.requestCount
+    });
 
     return new Promise((resolve, reject) => {
       const req = https.request(url, { method: 'POST', headers, timeout, agent }, (res) => {
@@ -1012,6 +1111,8 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
 
         let fullText = '';
         let buffer = '';
+        let firstTokenAt = 0;
+        let deltaCount = 0;
 
         res.setEncoding('utf8');
         res.on('data', (chunk) => {
@@ -1030,6 +1131,8 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
               const json = JSON.parse(payload);
               const delta = json?.choices?.[0]?.delta?.content;
               if (typeof delta === 'string' && delta) {
+                if (!firstTokenAt) firstTokenAt = Date.now();
+                deltaCount++;
                 fullText += delta;
                 if (typeof onDelta === 'function') onDelta(delta);
               }
@@ -1040,7 +1143,32 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
           }
         });
 
-        res.on('end', () => resolve(fullText.trim()));
+        res.on('end', () => {
+          const totalMs = Date.now() - requestStart;
+          const firstTokenMs = firstTokenAt ? firstTokenAt - requestStart : null;
+
+          if (metrics && typeof metrics === 'object') {
+            Object.assign(metrics, {
+              model: modelName,
+              promptChars,
+              firstTokenMs,
+              totalMs,
+              deltaCount
+            });
+          }
+
+          logger.info('LLM stream timing', {
+            model: modelName,
+            promptChars,
+            firstTokenMs,
+            totalMs,
+            deltaCount,
+            responseLength: fullText.length,
+            requestId: this.requestCount
+          });
+
+          resolve(fullText.trim());
+        });
         res.on('error', (error) => reject(new Error(`Streaming response error: ${error.message}`)));
       });
 
@@ -1052,6 +1180,75 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
 
       req.write(postData);
       req.end();
+    });
+  }
+
+  /** 估算 prompt 字符数，用于埋点对比上下文体积与首 token 延迟。 */
+  _promptCharCount(chatRequest) {
+    try {
+      let total = 0;
+      for (const message of chatRequest?.messages || []) {
+        if (typeof message.content === 'string') {
+          total += message.content.length;
+        } else if (Array.isArray(message.content)) {
+          for (const part of message.content) {
+            if (part && typeof part.text === 'string') {
+              total += part.text.length;
+            } else if (part && part.image_url && typeof part.image_url.url === 'string') {
+              // Base64 图片只记录粗略长度，避免日志里出现超长字符串
+              total += Math.min(part.image_url.url.length, 200000);
+            }
+          }
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /**
+   * 预热共享连接：app 启动后先做一次轻量 GET /models，
+   * 让后续第一次真实问答直接复用已建立的 TLS 连接。
+   */
+  warmUpConnection() {
+    if (!this.isInitialized || !this.baseUrl || !this.apiKey) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+      try {
+        const req = https.request(`${this.baseUrl}/models`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'User-Agent': this.getUserAgent()
+          },
+          timeout: 8000,
+          agent: sharedHttpsAgent
+        }, (res) => {
+          res.resume();
+          logger.info('LLM warm-up completed', {
+            statusCode: res.statusCode,
+            elapsedMs: Date.now() - startedAt
+          });
+          resolve(res.statusCode === 200);
+        });
+
+        req.on('error', (error) => {
+          logger.debug('LLM warm-up failed (non-fatal)', { error: error.message });
+          resolve(false);
+        });
+        req.on('timeout', () => {
+          req.destroy();
+          resolve(false);
+        });
+        req.end();
+      } catch (error) {
+        logger.debug('LLM warm-up failed (non-fatal)', { error: error.message });
+        resolve(false);
+      }
     });
   }
 
@@ -1394,6 +1591,11 @@ Remember: Be intelligent about filtering - only provide detailed responses when 
     process.env.DEEPSEEK_API_KEY = newApiKey;
     this.isInitialized = false;
     this.initializeClient();
+
+    // 新 key 生效后立刻预热连接，避免下一次提问多付一次握手成本。
+    if (this.isInitialized) {
+      this.warmUpConnection().catch(() => {});
+    }
 
     logger.info('API key updated and client reinitialized');
   }
