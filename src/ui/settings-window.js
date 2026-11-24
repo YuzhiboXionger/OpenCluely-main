@@ -20,6 +20,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const codingLanguageSelect = document.getElementById('codingLanguage');
     const activeSkillSelect = document.getElementById('activeSkill');
     const iconGrid = document.getElementById('iconGrid');
+    const jobTitleInput = document.getElementById('jobTitle');
+    const jobDescriptionInput = document.getElementById('jobDescription');
+    const injectResumeInput = document.getElementById('injectResume');
+    const uploadResumeButton = document.getElementById('uploadResumeButton');
+    const removeResumeButton = document.getElementById('removeResumeButton');
+    const resumeStatus = document.getElementById('resumeStatus');
+    const resumeTextInput = document.getElementById('resumeText');
 
     // Check if window.api exists
     if (!window.api) {
@@ -36,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Failed to get settings:', error);
             });
         }
+        requestProfile();
     };
 
     // Close button handler
@@ -102,6 +110,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (settings.activeSkill && activeSkillSelect) activeSkillSelect.value = settings.activeSkill;
 
+        // Job title / JD / injection toggle (resume text is loaded separately
+        // via getProfile so the full text only goes to this window).
+        if (jobTitleInput && settings.jobTitle !== undefined) jobTitleInput.value = settings.jobTitle || '';
+        if (jobDescriptionInput && settings.jobDescription !== undefined) {
+            jobDescriptionInput.value = settings.jobDescription || '';
+        }
+        if (injectResumeInput && settings.injectResume !== undefined) {
+            injectResumeInput.checked = settings.injectResume !== false;
+        }
+
         // Handle icon selection
         const selectedIcon = settings.selectedIcon || settings.appIcon;
         if (selectedIcon && iconGrid) {
@@ -120,6 +138,107 @@ document.addEventListener('DOMContentLoaded', () => {
     window.api.receive('load-settings', (settings) => {
         loadSettingsIntoUI(settings);
     });
+
+    // ── Candidate profile: job title / JD / resume ──
+    let profileLoaded = false;
+    let currentResume = null;
+    let resumeDirty = false;
+
+    const formatResumeTime = (iso) => {
+        if (!iso) return '';
+        const date = new Date(iso);
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+    };
+
+    const updateResumeStatus = () => {
+        if (!resumeStatus) return;
+        if (currentResume && currentResume.text) {
+            const count = resumeTextInput ? resumeTextInput.value.length : currentResume.charCount;
+            const time = formatResumeTime(currentResume.importedAt);
+            resumeStatus.textContent = `${currentResume.fileName} · ${count} 字${time ? ' · ' + time : ''}`;
+        }
+    };
+
+    const renderResume = () => {
+        if (!resumeStatus) return;
+        if (currentResume && currentResume.text) {
+            updateResumeStatus();
+            resumeStatus.classList.remove('is-error');
+            if (resumeTextInput) {
+                resumeTextInput.value = currentResume.text;
+                resumeTextInput.style.display = '';
+            }
+            if (removeResumeButton) removeResumeButton.style.display = '';
+        } else {
+            resumeStatus.textContent = '尚未上传简历';
+            resumeStatus.classList.remove('is-error');
+            if (resumeTextInput) {
+                resumeTextInput.value = '';
+                resumeTextInput.style.display = 'none';
+            }
+            if (removeResumeButton) removeResumeButton.style.display = 'none';
+        }
+    };
+
+    const showResumeError = (message) => {
+        if (!resumeStatus) return;
+        resumeStatus.textContent = message;
+        resumeStatus.classList.add('is-error');
+    };
+
+    const applyProfile = (profile) => {
+        if (!profile) return;
+        if (jobTitleInput) jobTitleInput.value = profile.jobTitle || '';
+        if (jobDescriptionInput) jobDescriptionInput.value = profile.jobDescription || '';
+        if (injectResumeInput) injectResumeInput.checked = profile.injectResume !== false;
+        currentResume = profile.resume || null;
+        resumeDirty = false;
+        renderResume();
+        profileLoaded = true;
+    };
+
+    const requestProfile = () => {
+        if (!window.electronAPI || typeof window.electronAPI.getProfile !== 'function') return;
+        window.electronAPI.getProfile().then(result => {
+            if (result && result.success) {
+                applyProfile(result.profile);
+            } else if (result && result.error) {
+                logger.info('Failed to load profile:', result.error);
+            }
+        }).catch(error => {
+            console.error('Failed to get profile:', error);
+        });
+    };
+
+    const saveProfileFields = () => {
+        if (!profileLoaded || !window.electronAPI || typeof window.electronAPI.saveSettings !== 'function') {
+            return Promise.resolve({ success: true });
+        }
+        const payload = {
+            jobTitle: jobTitleInput ? jobTitleInput.value : '',
+            jobDescription: jobDescriptionInput ? jobDescriptionInput.value : '',
+            injectResume: injectResumeInput ? injectResumeInput.checked : true
+        };
+        if (resumeDirty) {
+            payload.resume = currentResume ? {
+                fileName: currentResume.fileName,
+                text: resumeTextInput ? resumeTextInput.value : currentResume.text,
+                importedAt: currentResume.importedAt
+            } : null;
+        }
+        return window.electronAPI.saveSettings(payload).then(result => {
+            if (!result || result.success === false) {
+                throw new Error((result && result.error) || '保存失败');
+            }
+            resumeDirty = false;
+            if (resumeStatus) resumeStatus.classList.remove('is-error');
+            updateResumeStatus();
+            return result;
+        }).catch(error => {
+            showResumeError(`保存失败：${error.message}`);
+            throw error;
+        });
+    };
 
     // Listen for settings window shown event
     if (window.electronAPI && window.electronAPI.receive) {
@@ -185,6 +304,73 @@ document.addEventListener('DOMContentLoaded', () => {
             input.addEventListener('change', saveSettings);
             input.addEventListener('blur', saveSettings);
         }
+    });
+
+    // ── Profile field listeners ──
+    if (uploadResumeButton) {
+        uploadResumeButton.addEventListener('click', async () => {
+            if (!window.electronAPI || typeof window.electronAPI.pickResumeFile !== 'function') {
+                showResumeError('当前版本不支持上传简历');
+                return;
+            }
+            const originalHTML = uploadResumeButton.innerHTML;
+            uploadResumeButton.disabled = true;
+            uploadResumeButton.innerHTML = '解析中…';
+            try {
+                const result = await window.electronAPI.pickResumeFile();
+                if (!result || result.canceled) return;
+                if (!result.success) {
+                    showResumeError(result.error || '简历解析失败');
+                    return;
+                }
+                currentResume = result.resume;
+                resumeDirty = true;
+                renderResume();
+                await saveProfileFields();
+            } catch (error) {
+                showResumeError(`简历导入失败：${error.message}`);
+            } finally {
+                uploadResumeButton.disabled = false;
+                uploadResumeButton.innerHTML = originalHTML;
+            }
+        });
+    }
+
+    if (removeResumeButton) {
+        removeResumeButton.addEventListener('click', async () => {
+            currentResume = null;
+            resumeDirty = true;
+            renderResume();
+            try {
+                await saveProfileFields();
+            } catch (_) {
+                // 错误已显示在状态行
+            }
+        });
+    }
+
+    if (resumeTextInput) {
+        resumeTextInput.addEventListener('input', () => {
+            if (!currentResume) return;
+            currentResume.text = resumeTextInput.value;
+            resumeDirty = true;
+            updateResumeStatus();
+        });
+        resumeTextInput.addEventListener('blur', () => {
+            if (!resumeDirty) return;
+            saveProfileFields().catch(() => {
+                // 错误已显示在状态行
+            });
+        });
+    }
+
+    [jobTitleInput, jobDescriptionInput, injectResumeInput].forEach(input => {
+        if (!input) return;
+        input.addEventListener('change', () => {
+            saveProfileFields().catch(() => {
+                // 错误已显示在状态行
+            });
+        });
     });
 
     // Language selection handler

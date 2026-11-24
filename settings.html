@@ -270,6 +270,50 @@
         .settings-note code {
             color: rgba(255, 255, 255, 0.9);
         }
+
+        /* Candidate profile */
+        .settings-field-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .textarea-field {
+            max-width: 100%;
+            min-height: 84px;
+            resize: vertical;
+            line-height: 1.45;
+            font-family: inherit;
+        }
+
+        .resume-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .resume-status {
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.65);
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .resume-status.is-error {
+            color: rgba(255, 138, 128, 0.95);
+        }
+
+        #resumeText {
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -321,6 +365,53 @@
                         <select class="input-field" id="activeSkill">
                             <option value="dsa">数据结构与算法</option>
                         </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">
+                    <i class="fas fa-user-tie"></i>
+                    岗位与简历
+                </div>
+                <div class="settings-section-content">
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">岗位名称</div>
+                            <div class="settings-item-description">例如「后端开发工程师」，让回答更贴合目标岗位</div>
+                        </div>
+                        <input type="text" class="input-field" id="jobTitle" maxlength="100" placeholder="目标岗位">
+                    </div>
+                    <div class="settings-field-stack">
+                        <div class="settings-item-label">岗位 JD</div>
+                        <textarea class="input-field textarea-field" id="jobDescription" maxlength="5000" rows="4" placeholder="粘贴岗位职责与任职要求（可选）"></textarea>
+                    </div>
+                    <div class="settings-field-stack">
+                        <div class="settings-row">
+                            <div class="settings-item-label">简历（PDF）</div>
+                            <div class="resume-actions">
+                                <button class="btn" id="uploadResumeButton">
+                                    <i class="fas fa-upload"></i>
+                                    上传
+                                </button>
+                                <button class="btn btn-danger" id="removeResumeButton" style="display: none;">
+                                    <i class="fas fa-trash"></i>
+                                    移除
+                                </button>
+                            </div>
+                        </div>
+                        <div class="resume-status" id="resumeStatus">尚未上传简历</div>
+                        <textarea class="input-field textarea-field" id="resumeText" rows="5" placeholder="上传 PDF 后可在这里查看并修正解析文本" style="display: none;"></textarea>
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">回答时参考简历与 JD</div>
+                            <div class="settings-item-description">关闭后，聊天和语音回答不会携带岗位与简历信息</div>
+                        </div>
+                        <input type="checkbox" id="injectResume" checked>
+                    </div>
+                    <div class="settings-note">
+                        简历仅在本地解析保存；提问时会随请求发送给 DeepSeek。首版仅支持可复制文字的 PDF，扫描件无法解析。
                     </div>
                 </div>
             </div>

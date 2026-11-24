@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
-const { app, BrowserWindow, globalShortcut, session, ipcMain, desktopCapturer } = require("electron");
+const { app, BrowserWindow, globalShortcut, session, ipcMain, desktopCapturer, dialog } = require("electron");
 
 // ── Resolve a stable .env location ──
 // In packaged builds process.cwd() is unstable and frequently read-only
@@ -100,6 +100,7 @@ process.on("unhandledRejection", (reason) => {
 const captureService = require("./src/services/capture.service");
 const speechService = require("./src/services/speech.service");
 const llmService = require("./src/services/llm.service");
+const profileService = require("./src/services/profile.service");
 
 // Managers
 const windowManager = require("./src/managers/window.manager");
@@ -790,6 +791,41 @@ class ApplicationController {
 
     ipcMain.handle("get-settings", () => {
       return this.getSettings();
+    });
+
+    // 完整档案（含简历文本），仅供设置页读取和编辑。
+    ipcMain.handle("get-profile", () => {
+      try {
+        return { success: true, profile: profileService.getProfile() };
+      } catch (e) {
+        logger.warn("Failed to get profile", { error: e.message });
+        return { success: false, error: e.message };
+      }
+    });
+
+    // 选择并解析 PDF，只返回文本，不落盘；用户保存设置后才持久化。
+    ipcMain.handle("pick-resume-file", async (event) => {
+      try {
+        const owner = BrowserWindow.fromWebContents(event.sender);
+        const options = {
+          title: "选择简历 PDF",
+          properties: ["openFile"],
+          filters: [{ name: "PDF", extensions: ["pdf"] }]
+        };
+        const result = owner && !owner.isDestroyed()
+          ? await dialog.showOpenDialog(owner, options)
+          : await dialog.showOpenDialog(options);
+
+        if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+          return { canceled: true };
+        }
+
+        const resume = await profileService.parsePdfFile(result.filePaths[0]);
+        return { success: true, resume };
+      } catch (e) {
+        logger.warn("Failed to parse resume PDF", { error: e.message });
+        return { success: false, error: e.message };
+      }
     });
 
     // Answer panel opacity (percent, 10-100). Preview updates are sent live
@@ -1789,6 +1825,10 @@ class ApplicationController {
     // of truth (process.env) so the UI shows exactly what the running app is
     // using. Empty strings are returned rather than skipped so the UI can
     // distinguish "unset" from "stale value from a previous load".
+    // 候选人档案：岗位、JD 与简历。简历全文只返回给设置页，
+    // 其他窗口通过 getSettings 只拿摘要。
+    const profileSummary = profileService.getSummary();
+
     return {
       codingLanguage: this.codingLanguage || "cpp",
       activeSkill: this.activeSkill || "dsa",
@@ -1796,6 +1836,11 @@ class ApplicationController {
       selectedIcon: this.appIcon || "terminal",
       windowGap: windowManager.windowGap,
       answerOpacity: this.getAnswerOpacity(),
+
+      jobTitle: profileSummary.jobTitle,
+      jobDescription: profileSummary.jobDescription,
+      injectResume: profileSummary.injectResume,
+      resumeMeta: profileSummary.resumeMeta,
 
       speechResponseTarget: process.env.SPEECH_RESPONSE_TARGET || "both",
       audioInputSource: this.getAudioInputSource(),
@@ -1875,6 +1920,17 @@ class ApplicationController {
         const opacity = this.normalizeAnswerOpacity(settings.answerOpacity);
         process.env.ANSWER_OPACITY = String(opacity);
         windowManager.broadcastToAllWindows("answer-opacity-changed", opacity);
+      }
+
+      // ── 岗位 / JD / 简历：写入 userData/profile.json，不进入 .env ──
+      // 简历文本较长且含多行，放环境变量会破坏 dotenv 格式。
+      const profilePatch = {};
+      if (settings.jobTitle !== undefined) profilePatch.jobTitle = settings.jobTitle;
+      if (settings.jobDescription !== undefined) profilePatch.jobDescription = settings.jobDescription;
+      if (settings.injectResume !== undefined) profilePatch.injectResume = settings.injectResume;
+      if (settings.resume !== undefined) profilePatch.resume = settings.resume;
+      if (Object.keys(profilePatch).length > 0) {
+        profileService.update(profilePatch);
       }
 
       // ── Persist speech / API-key fields back to .env ──
@@ -1970,8 +2026,22 @@ class ApplicationController {
         }
       }
 
+      // 日志里避免写入简历全文 / 大段 JD。
+      const loggableSettings = { ...settings };
+      if (loggableSettings.resume !== undefined) {
+        loggableSettings.resume = loggableSettings.resume
+          ? {
+              fileName: loggableSettings.resume.fileName,
+              charCount: String(loggableSettings.resume.text || '').length
+            }
+          : null;
+      }
+      if (loggableSettings.jobDescription) {
+        loggableSettings.jobDescription = `[${String(loggableSettings.jobDescription).length} chars]`;
+      }
+
       logger.info("Settings saved successfully", {
-        ...settings,
+        ...loggableSettings,
         persistedEnvKeys: persistedKeys
       });
       return { success: true, persistedEnvKeys: persistedKeys };

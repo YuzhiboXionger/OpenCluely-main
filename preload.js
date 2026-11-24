@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
 
+  // Candidate profile (job title / JD / resume)
+  getProfile: () => ipcRenderer.invoke('get-profile'),
+  pickResumeFile: () => ipcRenderer.invoke('pick-resume-file'),
+
   // First-run onboarding
   getFirstRunStatus: () => ipcRenderer.invoke('get-first-run-status'),
   completeFirstRun: () => ipcRenderer.invoke('complete-first-run'),

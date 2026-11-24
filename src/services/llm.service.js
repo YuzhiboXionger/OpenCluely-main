@@ -1,6 +1,7 @@
 const https = require('https');
 const logger = require('../core/logger').createServiceLogger('LLM');
 const config = require('../core/config');
+const profileService = require('./profile.service');
 const { promptLoader } = require('../../prompt-loader');
 
 /**
@@ -562,6 +563,8 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
       messages.push({ role: 'system', content: systemPrompt });
     }
 
+    const hasProfileContext = this._appendProfileContext(messages);
+
     for (const event of conversationHistory) {
       if (event.role === 'system') continue;
       if (!event.content || typeof event.content !== 'string') continue;
@@ -585,6 +588,7 @@ Answer the question in the transcription. If it is a coding or DSA problem, prov
       historyLength: conversationHistory.length,
       totalMessages: messages.length,
       hasSystemMessage: !!systemPrompt,
+      hasProfileContext,
       hasLanguageInjection: !!programmingLanguage
     });
 
@@ -657,6 +661,8 @@ Answering rules: if it is a coding or DSA problem, provide a complete, runnable 
       { role: 'system', content: this.getIntelligentTranscriptionPrompt(activeSkill, programmingLanguage) }
     ];
 
+    const hasProfileContext = this._appendProfileContext(messages);
+
     if (sessionManager && typeof sessionManager.getConversationHistory === 'function') {
       const conversationHistory = sessionManager.getConversationHistory(10);
       for (const event of conversationHistory) {
@@ -681,10 +687,27 @@ Answering rules: if it is a coding or DSA problem, provide a complete, runnable 
       skill: activeSkill,
       programmingLanguage: programmingLanguage || 'not specified',
       totalMessages: messages.length,
+      hasProfileContext,
       cleanTextLength: cleanText.length
     });
 
     return { messages };
+  }
+
+  /**
+   * 把岗位 / JD / 简历作为独立的 system 消息加入请求。
+   * 未配置或用户关闭开关时不产生任何内容。
+   */
+  _appendProfileContext(messages) {
+    try {
+      const block = profileService.getContextBlock();
+      if (!block) return false;
+      messages.push({ role: 'system', content: block });
+      return true;
+    } catch (error) {
+      logger.warn('Failed to build profile context', { error: error.message });
+      return false;
+    }
   }
 
   getIntelligentTranscriptionPrompt(activeSkill, programmingLanguage) {
