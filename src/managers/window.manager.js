@@ -661,7 +661,7 @@ class WindowManager {
               }
             }, 50);
           } else {
-            window.setAlwaysOnTop(true);
+            this.forceReapplyAlwaysOnTop(window);
           }
         } catch (error) {
           logger.debug('Error in enforceAlwaysOnTop', { error: error.message });
@@ -689,14 +689,41 @@ class WindowManager {
       setTimeout(enforceAlwaysOnTop, 50);
     });
     
-    // Periodic enforcement every 3 seconds (more frequent)
+    // Periodic enforcement (faster on Windows: other apps such as DingTalk's
+    // share module can strip the topmost style at any moment)
+    const enforcementIntervalMs = process.platform === 'win32' ? 500 : 3000;
     const periodicEnforcement = setInterval(() => {
       if (window.isDestroyed()) {
         clearInterval(periodicEnforcement);
         return;
       }
+      // Do not churn the z-order of the window the user is working in:
+      // re-applying topmost/moveTop twice a second closes native popups
+      // (e.g. the audio-source <select> list) before an option can be picked.
+      if (window.isFocused()) {
+        window.setAlwaysOnTop(true);
+        return;
+      }
       enforceAlwaysOnTop();
-    }, 3000);
+    }, enforcementIntervalMs);
+
+    // Instant reaction on Windows: another app (e.g. DingTalk's meeting module)
+    // can call SetWindowPos(HWND_NOTOPMOST) on our window at any moment, which
+    // arrives as WM_WINDOWPOSCHANGED. Re-apply topmost right away instead of
+    // waiting for the next timer tick.
+    if (process.platform === 'win32') {
+      const WM_WINDOWPOSCHANGED = 0x0047;
+      let reapplying = false;
+      window.hookWindowMessage(WM_WINDOWPOSCHANGED, () => {
+        if (reapplying || window.isDestroyed()) return;
+        reapplying = true;
+        try {
+          this.forceReapplyAlwaysOnTop(window);
+        } finally {
+          setTimeout(() => { reapplying = false; }, 30);
+        }
+      });
+    }
     
     logger.debug('Applied enhanced stealth measures with aggressive always-on-top', {
       type,
@@ -1221,6 +1248,26 @@ class WindowManager {
     return this.isInteractive;
   }
 
+  // Electron short-circuits setAlwaysOnTop(true) when it already believes the
+  // window is topmost, so a window that lost WS_EX_TOPMOST from underneath us
+  // (e.g. DingTalk's share module strips it during a meeting) could never be
+  // restored. Toggle the flag to force a real SetWindowPos(HWND_TOPMOST) call.
+  forceReapplyAlwaysOnTop(window) {
+    if (!window || window.isDestroyed()) return;
+    // Hidden windows must be left alone: re-applying z-order on a hidden
+    // transparent window makes Chromium map it again, leaving a large
+    // invisible click/cursor trap on the desktop.
+    if (!window.isVisible()) return;
+
+    if (process.platform === 'win32') {
+      window.setAlwaysOnTop(false);
+      window.setAlwaysOnTop(true);
+      window.moveTop();
+    } else {
+      window.setAlwaysOnTop(true);
+    }
+  }
+
   // New method to enforce always-on-top for all windows
   enforceAlwaysOnTopForAllWindows() {
     this.windows.forEach((window, type) => {
@@ -1242,15 +1289,9 @@ class WindowManager {
               }
             }, 200);
           } else {
-            // Windows and Linux
-            window.setAlwaysOnTop(true);
-            
-            // Additional enforcement after a short delay
-            setTimeout(() => {
-              if (!window.isDestroyed()) {
-                window.setAlwaysOnTop(true);
-              }
-            }, 100);
+            // Windows/Linux: force a real re-apply so a topmost style that was
+            // stripped by another app is actually restored
+            this.forceReapplyAlwaysOnTop(window);
           }
         } catch (error) {
           logger.warn('Error enforcing always-on-top', { 
