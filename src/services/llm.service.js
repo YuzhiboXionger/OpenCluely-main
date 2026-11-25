@@ -745,6 +745,16 @@ Answering rules: if it is a coding or DSA problem, provide a complete, runnable 
       { role: 'system', content: this.getIntelligentTranscriptionPrompt(activeSkill, programmingLanguage) }
     ];
 
+    // 语音链路不走 buildChatRequest，默认只带“智能转写”提示词。
+    // 对 interview 这类非 DSA 技能再追加一份技能提示词，让口头回答也遵循
+    // 该技能的篇幅与语气（技能内已声明其规则优先于通用规则）。
+    if (activeSkill && activeSkill !== 'dsa') {
+      const skillPrompt = promptLoader.getSkillPrompt(activeSkill, programmingLanguage);
+      if (skillPrompt) {
+        messages.push({ role: 'system', content: skillPrompt });
+      }
+    }
+
     const hasProfileContext = this._appendProfileContext(messages);
 
     if (sessionManager && typeof sessionManager.getConversationHistory === 'function') {

@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
+// 目前只开放这两个技能；新增技能时在这里登记，并补 prompts/<skill>.md。
+const AVAILABLE_SKILLS = ['dsa', 'interview'];
+
 class PromptLoader {
   constructor() {
     this.prompts = new Map();
@@ -28,7 +31,7 @@ class PromptLoader {
       for (const file of files) {
         if (file.endsWith('.md')) {
           const skillName = path.basename(file, '.md');
-          if (skillName !== 'dsa') continue; // only keep DSA
+          if (!AVAILABLE_SKILLS.includes(skillName)) continue;
           const filePath = path.join(promptsDir, file);
           const promptContent = fs.readFileSync(filePath, 'utf8');
           
@@ -329,9 +332,15 @@ STRICT REQUIREMENTS:
       'data-structures': 'dsa',
       'algorithms': 'dsa',
       'data-structures-algorithms': 'dsa',
-      'behavioral': 'behavioral',
-      'behavioral-interview': 'behavioral',
-      'behavior': 'behavioral',
+      'interview': 'interview',
+      'interview-questions': 'interview',
+      'hr': 'interview',
+      'hr-interview': 'interview',
+      '面试': 'interview',
+      '面试问答': 'interview',
+      'behavioral': 'interview',
+      'behavioral-interview': 'interview',
+      'behavior': 'interview',
       'sales': 'sales',
       'selling': 'sales',
       'business-development': 'sales',
@@ -369,7 +378,7 @@ STRICT REQUIREMENTS:
     if (!this.promptsLoaded) {
       this.loadPrompts();
     }
-    return ['dsa'];
+    return AVAILABLE_SKILLS.filter((skill) => this.prompts.has(skill));
   }
 
   /**

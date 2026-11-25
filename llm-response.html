@@ -697,6 +697,18 @@
         let latestStreamId = null;
         let streamFlushTimer = null;
 
+        // 自动跟随：只有停留在底部时才跟随流式内容；用户向上滚动后暂停跟随
+        const STREAM_BOTTOM_TOLERANCE = 24;
+        let followStreamBottom = true;
+        function attachStreamFollow() {
+            const scroller = document.querySelector('.full-content-inner');
+            if (!scroller || scroller._followBound) return;
+            scroller._followBound = true;
+            scroller.addEventListener('scroll', () => {
+                followStreamBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= STREAM_BOTTOM_TOLERANCE;
+            }, { passive: true });
+        }
+
         function resetActiveStream() {
             if (streamFlushTimer) {
                 clearTimeout(streamFlushTimer);
@@ -724,6 +736,7 @@
             responseElement.classList.remove('hidden');
             if (splitLayout) splitLayout.classList.add('hidden');
             fullContent.classList.remove('hidden');
+            attachStreamFollow();
             fullMarkdown.style.whiteSpace = 'pre-wrap';
 
             activeStream = { messageId: latestStreamId, raw: '', fullEl: fullMarkdown };
@@ -735,7 +748,7 @@
             if (!activeStream) return;
             activeStream.fullEl.textContent = activeStream.raw;
             const scroller = document.querySelector('.full-content-inner');
-            if (scroller) scroller.scrollTop = scroller.scrollHeight;
+            if (scroller && followStreamBottom) scroller.scrollTop = scroller.scrollHeight;
         }
 
         function handleStreamChunk(data) {
@@ -836,6 +849,8 @@
         }
 
         function setupScrolling() {
+            // 新回答从顶部开始，恢复自动跟随
+            followStreamBottom = true;
             // Set up scrollable elements based on current layout
             setTimeout(() => {
                 if (hasCode) {
@@ -854,6 +869,8 @@
                     element.scrollLeft = 0;
                     element.setAttribute('tabindex', '0');
                 });
+
+                attachStreamFollow();
 
                 // Enable scrolling if interactive mode is on
                 if (isInteractive) {

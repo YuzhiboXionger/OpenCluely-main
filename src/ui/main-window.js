@@ -161,7 +161,8 @@ class MainWindowUI {
         
         // Define available skills for navigation
         this.availableSkills = [
-            'dsa'
+            'dsa',
+            'interview'
         ];
         
         this.init();
@@ -468,10 +469,12 @@ class MainWindowUI {
             }
         });
 
-        // Skill indicator click handler toggles DSA skill
+        // Skill indicator click handler cycles through available skills
         this.skillIndicator.addEventListener('click', () => {
             if (!this.isInteractive) return;
-            const newSkill = 'dsa';
+            const currentIndex = this.availableSkills.indexOf(this.currentSkill);
+            const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % this.availableSkills.length;
+            const newSkill = this.availableSkills[nextIndex];
             if (window.electronAPI && window.electronAPI.updateActiveSkill) {
                 window.electronAPI.updateActiveSkill(newSkill).then(() => {
                     this.handleSkillActivated(newSkill);
@@ -700,6 +703,7 @@ class MainWindowUI {
         const skill = data.skill || data.metadata?.skill || 'General';
         const skillNames = {
             'dsa': 'DSA',
+            'interview': 'Interview',
             'behavioral': 'Behavioral', 
             'sales': 'Sales',
             'presentation': 'Presentation',
@@ -994,6 +998,7 @@ class MainWindowUI {
     updateSkillIndicator() {
         const skillNames = {
             'dsa': 'DSA',
+            'interview': 'Interview',
             'behavioral': 'Behavioral', 
             'sales': 'Sales',
             'presentation': 'Presentation',
@@ -1029,8 +1034,8 @@ class MainWindowUI {
             skillSpan.textContent = skillName;
                         
             const tooltip = this.isInteractive ? 
-                `${skillName} - Use ⌘↑/↓ to navigate skills` : 
-                `${skillName} - Enable interactive mode (Alt+A) to navigate`;
+                `${skillName} - 点击切换技能` : 
+                `${skillName} - 启用交互模式 (Alt+A) 后可切换`;
             this.skillIndicator.title = tooltip;
             
             // Add visual feedback for skill change
@@ -1107,6 +1112,7 @@ class MainWindowUI {
     showSkillChangeNotification(skill, direction) {
         const skillNames = {
             'dsa': 'DSA',
+            'interview': 'Interview',
             'behavioral': 'Behavioral', 
             'sales': 'Sales',
             'presentation': 'Presentation',

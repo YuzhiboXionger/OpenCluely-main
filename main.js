@@ -1074,6 +1074,7 @@ class ApplicationController {
   navigateSkill(direction) {
     const availableSkills = [
       "dsa",
+      "interview",
     ];
 
     const currentIndex = availableSkills.indexOf(this.activeSkill);

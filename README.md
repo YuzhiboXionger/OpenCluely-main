@@ -202,7 +202,7 @@ ANSWER_OPACITY=40
 | 分区 | 项目 | 说明 |
 |---|---|---|
 | 语言与技能 | 编程语言 | C++ / C / Python / Java / JavaScript / Go / Dart，DSA 提示词会注入该语言约束 |
-| 语言与技能 | 当前技能 | 目前提供「数据结构与算法」（`prompts/dsa.md`） |
+| 语言与技能 | 当前技能 | 提供「数据结构与算法」（`prompts/dsa.md`）与「面试问答」（`prompts/interview.md`，1–2 句口语化回答） |
 | 应用图标 | 终端 / 活动 / 设置 | 同时修改图标与进程名，用于伪装 |
 | 语音识别 | 音频输入源 | 麦克风，或系统音频（会议声音，仅 Windows 回环） |
 | 语音识别 | 语音回答目标 | 聊天窗和悬浮窗 / 仅聊天窗 / 仅悬浮窗 |
@@ -233,6 +233,7 @@ ANSWER_OPACITY=40
 ├── prompt-loader.js            # 技能提示词加载与语言注入
 ├── prompts/
 │   ├── dsa.md                  # 数据结构与算法技能提示词
+│   ├── interview.md            # 面试问答技能提示词（简短、口语化）
 │   └── programming.md
 ├── src/
 │   ├── core/                   # 配置、首次运行、日志（winston，写入 ~/.OpenCluely/logs）

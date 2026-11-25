@@ -754,6 +754,20 @@
       const recentResponseHashes = new Set();
       const RECENT_HASH_LIMIT = 50;
 
+      // 自动跟随：只有停留在底部时才跟随新内容；用户向上滚动后暂停跟随
+      const CHAT_BOTTOM_TOLERANCE = 24;
+      let followChatBottom = true;
+      function isChatNearBottom() {
+        return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight <= CHAT_BOTTOM_TOLERANCE;
+      }
+      function scrollChatToBottom() {
+        if (!followChatBottom) return;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      chatMessages.addEventListener('scroll', () => {
+        followChatBottom = isChatNearBottom();
+      }, { passive: true });
+
       function hashString(str) {
         try {
           let h = 2166136261 >>> 0; // FNV-1a
@@ -861,6 +875,9 @@
           return;
         }
 
+        // 发送/收到用户消息时回到跟随状态，避免新对话看不到
+        if (type === 'user') followChatBottom = true;
+
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
 
@@ -883,7 +900,7 @@
         messageDiv.appendChild(textDiv);
 
         chatMessages.appendChild(messageDiv);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        scrollChatToBottom();
 
         if (!skipPersist) {
           chatHistory.push({ kind: 'message', type, text });
@@ -933,7 +950,7 @@
         thinkingDiv.appendChild(textDiv);
 
         chatMessages.appendChild(thinkingDiv);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        scrollChatToBottom();
       }
 
       // Hide thinking indicator
@@ -977,7 +994,7 @@
         messageDiv.appendChild(timeDiv);
         messageDiv.appendChild(textDiv);
         chatMessages.appendChild(messageDiv);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        scrollChatToBottom();
 
         activeStream = { messageId, raw: '', messageDiv, textDiv };
         return activeStream;
@@ -988,7 +1005,7 @@
         if (!activeStream) return;
         // 流式阶段只写纯文本，避免每个 token 都跑一次 Markdown/代码解析
         activeStream.textDiv.textContent = activeStream.raw;
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        scrollChatToBottom();
       }
 
       function handleStreamStart(data) {
@@ -1219,7 +1236,7 @@
         messageDiv.appendChild(timeDiv);
         messageDiv.appendChild(textDiv);
         chatMessages.appendChild(messageDiv);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        scrollChatToBottom();
 
         try { if (window.Prism && Prism.highlightElement) { Prism.highlightElement(codeEl); } } catch (_) {}
 
