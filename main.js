@@ -101,6 +101,7 @@ const captureService = require("./src/services/capture.service");
 const speechService = require("./src/services/speech.service");
 const llmService = require("./src/services/llm.service");
 const profileService = require("./src/services/profile.service");
+const historyService = require("./src/services/history.service");
 
 // Managers
 const windowManager = require("./src/managers/window.manager");
@@ -240,6 +241,9 @@ class ApplicationController {
       this.setupPermissions();
       this.setupDisplayMediaHandler();
       this.setupNetworkConfiguration();
+
+      // 笔试/面试历史记录：加载 userData/history.json，超时的活跃场次会在这里收尾。
+      historyService.init();
 
       // Small delay to ensure desktop/space detection is accurate
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -421,6 +425,7 @@ class ApplicationController {
       "CommandOrControl+Shift+V": () => windowManager.toggleVisibility(),
       "CommandOrControl+.": () => windowManager.toggleInteraction(),
       "CommandOrControl+Shift+C": () => windowManager.switchToWindow("chat"),
+      "CommandOrControl+Shift+H": () => windowManager.showHistory(),
       "CommandOrControl+Shift+\\": () => this.clearSessionMemory(),
       "CommandOrControl+,": () => windowManager.showSettings(),
       "CommandOrControl+Shift+1": () => this.adjustAnswerOpacity(-10),
@@ -670,6 +675,138 @@ class ApplicationController {
       sessionManager.clear();
       windowManager.broadcastToAllWindows("session-cleared");
       return { success: true };
+    });
+
+    // ── 笔试/面试历史记录 ──
+    ipcMain.handle("show-history", async () => {
+      // BrowserWindow 不能直接通过 IPC 序列化，返回普通对象。
+      await windowManager.showHistory();
+      return { success: true };
+    });
+    ipcMain.handle("hide-history", () => {
+      windowManager.hideHistory();
+      return { success: true };
+    });
+
+    ipcMain.handle("history-list-sessions", (event, filters) => {
+      return historyService.listSessions(filters || {});
+    });
+
+    ipcMain.handle("history-list-records", (event, filters) => {
+      return historyService.listRecords(filters || {});
+    });
+
+    ipcMain.handle("history-get-record", (event, id) => {
+      return historyService.getRecord(id);
+    });
+
+    ipcMain.handle("history-get-active-session", () => {
+      return historyService.getActiveSession();
+    });
+
+    ipcMain.handle("history-create-session", (event, options) => {
+      const session = historyService.createSession(options || {});
+      windowManager.broadcastToAllWindows("history-changed", {
+        reason: "session-created",
+        sessionId: session.id
+      });
+      return session;
+    });
+
+    ipcMain.handle("history-update-session", (event, payload) => {
+      const { id, patch } = payload || {};
+      const session = historyService.updateSession(id, patch || {});
+      windowManager.broadcastToAllWindows("history-changed", {
+        reason: "session-updated",
+        sessionId: id
+      });
+      return session;
+    });
+
+    ipcMain.handle("history-end-session", (event, id) => {
+      const session = historyService.endSession(id);
+      windowManager.broadcastToAllWindows("history-changed", {
+        reason: "session-ended",
+        sessionId: id
+      });
+      return session;
+    });
+
+    ipcMain.handle("history-remove-session", (event, id) => {
+      const result = historyService.removeSession(id);
+      windowManager.broadcastToAllWindows("history-changed", {
+        reason: "session-removed",
+        sessionId: id
+      });
+      return result;
+    });
+
+    ipcMain.handle("history-update-record", (event, payload) => {
+      const { id, patch } = payload || {};
+      const record = historyService.updateRecord(id, patch || {});
+      windowManager.broadcastToAllWindows("history-changed", {
+        reason: "record-updated",
+        recordId: id
+      });
+      return record;
+    });
+
+    ipcMain.handle("history-remove-record", (event, id) => {
+      const result = historyService.removeRecord(id);
+      windowManager.broadcastToAllWindows("history-changed", {
+        reason: "record-removed",
+        recordId: id
+      });
+      return result;
+    });
+
+    ipcMain.handle("history-clear-all", () => {
+      const result = historyService.clearAll();
+      windowManager.broadcastToAllWindows("history-changed", { reason: "cleared" });
+      return result;
+    });
+
+    ipcMain.handle("history-stats", () => historyService.getStats());
+
+    ipcMain.handle("history-export", async (event, options = {}) => {
+      try {
+        const format = options.format === "json" ? "json" : "markdown";
+        const sessionId = options.sessionId || null;
+        const payload = historyService.getExportPayload({ format, sessionId });
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const suffix = sessionId ? `-${sessionId}` : "";
+        const defaultName = `OpenCluely-History${suffix}-${dateStamp}.${format === "json" ? "json" : "md"}`;
+        let defaultPath = defaultName;
+        try {
+          defaultPath = path.join(app.getPath("downloads"), defaultName);
+        } catch (_) {
+          // 某些 Linux 环境没有 downloads 目录，退回文件名
+        }
+
+        const dialogOptions = {
+          title: "导出历史记录",
+          defaultPath,
+          filters: format === "json"
+            ? [{ name: "JSON", extensions: ["json"] }]
+            : [{ name: "Markdown", extensions: ["md"] }]
+        };
+
+        const parent = windowManager.getWindow("history");
+        const result = parent && !parent.isDestroyed()
+          ? await dialog.showSaveDialog(parent, dialogOptions)
+          : await dialog.showSaveDialog(dialogOptions);
+
+        if (result.canceled || !result.filePath) {
+          return { success: false, canceled: true };
+        }
+
+        fs.writeFileSync(result.filePath, payload, "utf8");
+        logger.info("History exported", { format, sessionId, filePath: result.filePath });
+        return { success: true, filePath: result.filePath };
+      } catch (error) {
+        logger.error("Failed to export history", { error: error.message });
+        return { success: false, error: error.message };
+      }
     });
 
     ipcMain.handle("force-always-on-top", () => {
@@ -1047,6 +1184,42 @@ class ApplicationController {
     }
   }
 
+  /**
+   * 写入一条笔试/面试历史记录。历史写入失败不能影响答题主流程，
+   * 因此这里只记日志并把异常吞掉。
+   */
+  saveHistoryRecord({ type, question, answer, language = null, skill = null, meta = {} }) {
+    try {
+      // 空内容与固定寒暄兜底不写入题库，避免历史里全是无意义记录。
+      if (!question || !answer) return null;
+      if (String(answer).trim() === "你好，我在听。") return null;
+
+      const record = historyService.addRecord({
+        type,
+        skill: skill || this.activeSkill,
+        language,
+        question,
+        answer,
+        meta
+      });
+      if (record) {
+        windowManager.broadcastToAllWindows("history-changed", {
+          reason: "record-added",
+          sessionId: record.sessionId,
+          recordId: record.id
+        });
+      }
+      return record;
+    } catch (error) {
+      logger.warn("Failed to save history record", {
+        error: error.message,
+        type,
+        questionLength: (question || "").length
+      });
+      return null;
+    }
+  }
+
   handleUpArrow() {
     // Move the command bar and the answer panel up together, in both
     // interactive and click-through modes.
@@ -1318,6 +1491,21 @@ class ApplicationController {
         isImageAnalysis: true
       });
 
+      this.saveHistoryRecord({
+        type: "screenshot",
+        question: llmResult.metadata.transcription || "",
+        answer: llmResult.metadata.answer || llmResult.response,
+        skill: llmResult.metadata.skill,
+        language: llmResult.metadata.programmingLanguage || (needsProgrammingLanguage ? this.codingLanguage : null),
+        meta: {
+          messageId,
+          requestId: llmResult.metadata.requestId,
+          processingTime: llmResult.metadata.processingTime,
+          firstTokenMs: llmResult.metadata.firstTokenMs,
+          usedFallback: llmResult.metadata.usedFallback
+        }
+      });
+
       this.broadcastTranscriptionLLMResponse(llmResult);
 
       windowManager.showLLMResponse(llmResult.response, {
@@ -1388,6 +1576,21 @@ class ApplicationController {
         skill: this.activeSkill,
         processingTime: llmResult.metadata.processingTime,
         usedFallback: llmResult.metadata.usedFallback,
+      });
+
+      this.saveHistoryRecord({
+        type: "chat",
+        question: text,
+        answer: llmResult.response,
+        skill: llmResult.metadata.skill,
+        language: llmResult.metadata.programmingLanguage || (needsProgrammingLanguage ? this.codingLanguage : null),
+        meta: {
+          messageId,
+          requestId: llmResult.metadata.requestId,
+          processingTime: llmResult.metadata.processingTime,
+          firstTokenMs: llmResult.metadata.firstTokenMs,
+          usedFallback: llmResult.metadata.usedFallback
+        }
       });
 
       this.broadcastTranscriptionLLMResponse(llmResult);
@@ -1570,6 +1773,25 @@ class ApplicationController {
         isTranscriptionResponse: true
       });
 
+      // 寒暄/无意义输入由 _sanitizeTranscriptionResponse 兜底为固定句式，
+      // 这类内容不写入题库，避免历史里全是「你好，我在听」。
+      if (sanitizedResponse && sanitizedResponse !== "你好，我在听。") {
+        this.saveHistoryRecord({
+          type: "speech",
+          question: cleanText,
+          answer: sanitizedResponse,
+          skill: llmResult.metadata.skill,
+          language: llmResult.metadata.programmingLanguage || (needsProgrammingLanguage ? this.codingLanguage : null),
+          meta: {
+            messageId,
+            requestId: llmResult.metadata.requestId,
+            processingTime: llmResult.metadata.processingTime,
+            firstTokenMs: llmResult.metadata.firstTokenMs,
+            usedFallback: llmResult.metadata.usedFallback
+          }
+        });
+      }
+
       this.sendTranscriptionLLMResponseToVoiceTargets(llmResult);
       if (this.shouldShowVoiceOverlay()) {
         windowManager.showLLMResponse(llmResult.response, {
@@ -1613,6 +1835,21 @@ class ApplicationController {
           isTranscriptionResponse: true,
           fallbackReason: error.message
         });
+
+        const fallbackQuestion = String(text || "").trim();
+        if (fallbackQuestion && fallbackResult.response) {
+          this.saveHistoryRecord({
+            type: "speech",
+            question: fallbackQuestion,
+            answer: fallbackResult.response,
+            language: this.activeSkill === "dsa" ? this.codingLanguage : null,
+            meta: {
+              messageId,
+              processingTime: fallbackResult.metadata.processingTime,
+              usedFallback: true
+            }
+          });
+        }
 
         this.sendTranscriptionLLMResponseToVoiceTargets(fallbackResult);
         if (this.shouldShowVoiceOverlay()) {
@@ -1817,6 +2054,8 @@ class ApplicationController {
 
   onWillQuit() {
     globalShortcut.unregisterAll();
+    // 退出前同步落盘，避免最后一次历史修改丢失。
+    historyService.flushSync();
     speechService.shutdown();
     windowManager.destroyAllWindows();
 

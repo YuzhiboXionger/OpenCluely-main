@@ -228,7 +228,10 @@ class LLMService {
           requestId: this.requestCount,
           usedFallback: false,
           streamed: true,
-          isImageAnalysis: true
+          isImageAnalysis: true,
+          // 供历史记录拆分「题目转写」与「解答」，避免再次解析 response 文本。
+          transcription,
+          answer: finalAnswer
         }
       };
     } catch (error) {

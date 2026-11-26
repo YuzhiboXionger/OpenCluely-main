@@ -46,6 +46,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getProfile: () => ipcRenderer.invoke('get-profile'),
   pickResumeFile: () => ipcRenderer.invoke('pick-resume-file'),
 
+  // Interview history (sessions + Q&A records)
+  showHistory: () => ipcRenderer.invoke('show-history'),
+  hideHistory: () => ipcRenderer.invoke('hide-history'),
+  historyListSessions: (filters) => ipcRenderer.invoke('history-list-sessions', filters),
+  historyListRecords: (filters) => ipcRenderer.invoke('history-list-records', filters),
+  historyGetRecord: (id) => ipcRenderer.invoke('history-get-record', id),
+  historyGetActiveSession: () => ipcRenderer.invoke('history-get-active-session'),
+  historyCreateSession: (options) => ipcRenderer.invoke('history-create-session', options),
+  historyUpdateSession: (id, patch) => ipcRenderer.invoke('history-update-session', { id, patch }),
+  historyEndSession: (id) => ipcRenderer.invoke('history-end-session', id),
+  historyRemoveSession: (id) => ipcRenderer.invoke('history-remove-session', id),
+  historyUpdateRecord: (id, patch) => ipcRenderer.invoke('history-update-record', { id, patch }),
+  historyRemoveRecord: (id) => ipcRenderer.invoke('history-remove-record', id),
+  historyClearAll: () => ipcRenderer.invoke('history-clear-all'),
+  historyStats: () => ipcRenderer.invoke('history-stats'),
+  historyExport: (options) => ipcRenderer.invoke('history-export', options),
+  onHistoryChanged: (callback) => ipcRenderer.on('history-changed', (event, data) => callback(data)),
+  onHistoryWindowShown: (callback) => ipcRenderer.on('history-window-shown', () => callback()),
+
   // First-run onboarding
   getFirstRunStatus: () => ipcRenderer.invoke('get-first-run-status'),
   completeFirstRun: () => ipcRenderer.invoke('complete-first-run'),

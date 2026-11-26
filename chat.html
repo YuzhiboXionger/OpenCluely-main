@@ -686,6 +686,9 @@
           <div class="recording-indicator" id="recordingIndicator"></div>
         </div>
         <div class="header-actions">
+          <button class="icon-button" id="historyBtn" title="历史记录">
+            <i class="fas fa-clock-rotate-left"></i>
+          </button>
           <button class="icon-button" id="clearHistoryBtn" title="清空聊天记录">
             <i class="fas fa-trash"></i>
           </button>
@@ -1358,6 +1361,15 @@
       // UI Event Listeners
       if (clearHistoryBtn) {
         clearHistoryBtn.addEventListener('click', () => clearChatHistory());
+      }
+
+      const historyBtn = document.getElementById('historyBtn');
+      if (historyBtn) {
+        historyBtn.addEventListener('click', () => {
+          if (whysperAPI && typeof whysperAPI.showHistory === 'function') {
+            whysperAPI.showHistory();
+          }
+        });
       }
 
       const closeChatBtn = document.getElementById('closeChatBtn');

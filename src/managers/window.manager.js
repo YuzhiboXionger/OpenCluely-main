@@ -77,6 +77,12 @@ class WindowManager {
         visibleOnAllWorkspaces: true,
         fullscreenable: false
       },
+      history: {
+        width: 960,
+        height: 700,
+        file: 'history.html',
+        title: '历史记录'
+      },
       onboarding: {
         width: 560,
         height: 680,
@@ -267,6 +273,18 @@ class WindowManager {
     return window;
   }
 
+  async createHistoryWindow() {
+    const existing = this.windows.get('history');
+    if (existing && !existing.isDestroyed()) {
+      return existing;
+    }
+    if (existing) this.windows.delete('history');
+    const window = await this.createWindow('history');
+    this.windows.set('history', window);
+    window.hide();
+    return window;
+  }
+
   async createWindow(type, showOnCreate = false) {
     const windowConfig = this.windowConfigs[type];
     if (!windowConfig) {
@@ -340,6 +358,28 @@ class WindowManager {
           acceptFirstMouse: true,
           disableAutoHideCursor: true
         })
+      };
+  } else if (type === 'history') {
+      // 历史记录窗口：可缩放、可输入，窗口内自带关闭按钮。
+      browserWindowOptions = {
+        ...baseOptions,
+        minWidth: 760,
+        minHeight: 520,
+        frame: false,
+        titleBarStyle: 'hidden',
+        transparent: true,
+        backgroundColor: '#00000000',
+        resizable: true,
+        minimizable: true,
+        maximizable: true,
+        closable: false,
+        hasShadow: true,
+        ...(process.platform === 'darwin' && {
+          titleBarStyle: 'hiddenInset',
+          trafficLightPosition: { x: -100, y: -100 },
+          acceptFirstMouse: true
+        }),
+        level: process.platform === 'darwin' ? 'floating' : undefined,
       };
   } else if (type === 'main') {
       // Main window configuration - fit to content, completely frameless
@@ -755,7 +795,8 @@ class WindowManager {
       main: { x: displayX + 50, y: displayY + topMargin },
       chat: { x: displayX + screenWidth - windowWidth - 50, y: displayY + topMargin },
       llmResponse: { x: displayX + (screenWidth - windowWidth) / 2, y: displayY + topMargin },
-      settings: { x: displayX + (screenWidth - windowWidth) / 2, y: displayY + topMargin }
+      settings: { x: displayX + (screenWidth - windowWidth) / 2, y: displayY + topMargin },
+      history: { x: displayX + (screenWidth - windowWidth) / 2, y: displayY + topMargin }
     };
 
     const position = positions[type] || { x: displayX + 100, y: displayY + topMargin };
@@ -1485,6 +1526,41 @@ class WindowManager {
     }
   }
 
+  async showHistory() {
+    if (this.isScreenBeingShared) return null;
+
+    let historyWindow = this.windows.get('history');
+    if (!historyWindow || historyWindow.isDestroyed()) {
+      historyWindow = await this.createHistoryWindow();
+    }
+
+    this.showOnCurrentDesktop(historyWindow);
+    const display = this.currentDisplay || screen.getPrimaryDisplay();
+    const area = display.workArea || display.workAreaSize;
+    const [historyWidth, historyHeight] = historyWindow.getSize();
+    historyWindow.setPosition(
+      Math.round(area.x + (area.width - historyWidth) / 2),
+      Math.round(area.y + (area.height - historyHeight) / 2)
+    );
+    // 历史窗口需要输入与滚动，即使处于鼠标穿透模式也要可点击。
+    historyWindow.setIgnoreMouseEvents(false);
+    historyWindow.focus();
+    setTimeout(() => {
+      if (historyWindow && !historyWindow.isDestroyed()) {
+        historyWindow.webContents.send('history-window-shown');
+      }
+    }, 50);
+    logger.info('History window displayed');
+    return historyWindow;
+  }
+
+  hideHistory() {
+    const historyWindow = this.windows.get('history');
+    if (historyWindow && !historyWindow.isDestroyed()) {
+      historyWindow.hide();
+    }
+  }
+
   async showOnboarding() {
     if (this.isScreenBeingShared) return null;
 
@@ -1782,6 +1858,10 @@ class WindowManager {
             newY = displayY + topMargin;
             break;
           case 'settings':
+            newX = displayX + (displayWidth - windowWidth) / 2;
+            newY = displayY + topMargin;
+            break;
+          case 'history':
             newX = displayX + (displayWidth - windowWidth) / 2;
             newY = displayY + topMargin;
             break;

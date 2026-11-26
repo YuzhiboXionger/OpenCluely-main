@@ -452,6 +452,7 @@ class MainWindowUI {
         this.settingsIndicator = document.getElementById('settingsIndicator'); // Optional
         this.micButton = document.getElementById('micButton');
     this.infoButton = document.getElementById('infoButton');
+    this.historyButton = document.getElementById('historyButton');
     this.shortcutsPopover = document.getElementById('shortcutsPopover');
 
         // NEW: Screenshot button is the first .command-item without id
@@ -553,6 +554,16 @@ class MainWindowUI {
                         window.electronAPI.resizeWindow(Math.ceil(rect.width), Math.ceil(rect.height));
                     }
                 }, 50);
+            });
+        }
+
+        // History button
+        if (this.historyButton) {
+            this.historyButton.addEventListener('click', () => {
+                if (!this.isInteractive) return;
+                if (window.electronAPI && window.electronAPI.showHistory) {
+                    window.electronAPI.showHistory();
+                }
             });
         }
 

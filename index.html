@@ -32,7 +32,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 16px;
+        gap: 9px;
         padding: 0 12px;
         color: rgba(255, 255, 255, 0.9);
         font-size: 11px;
@@ -50,7 +50,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        padding: 6px 10px;
+        padding: 6px 7px;
         border-radius: 6px;
         color: rgba(255, 255, 255, 0.9);
         font-size: 12px;
@@ -417,6 +417,10 @@
         </select>
       </div>
       <div class="command-separator"></div>
+      <div class="command-item" id="historyButton" title="历史记录 (Ctrl/Cmd+Shift+H)">
+        <i class="fas fa-clock-rotate-left"></i>
+      </div>
+      <div class="command-separator"></div>
       <div class="command-item" id="infoButton" title="快捷键">
         <i class="fas fa-circle-info"></i>
       </div>
@@ -485,6 +489,14 @@
               + <span class="kbd">C</span>
             </td>
             <td>打开聊天窗</td>
+          </tr>
+          <tr>
+            <td>
+              <span class="kbd">Ctrl/Cmd</span>
+              + <span class="kbd">Shift</span>
+              + <span class="kbd">H</span>
+            </td>
+            <td>打开历史记录</td>
           </tr>
           <tr>
             <td>
