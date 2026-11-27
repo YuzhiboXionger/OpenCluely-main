@@ -753,9 +753,21 @@ class WindowManager {
     // waiting for the next timer tick.
     if (process.platform === 'win32') {
       const WM_WINDOWPOSCHANGED = 0x0047;
+      const WM_ENTERSIZEMOVE = 0x0231;
+      const WM_EXITSIZEMOVE = 0x0232;
       let reapplying = false;
+      // 系统拖动/缩放循环期间（用户按住标题栏拖窗口时），重设置顶会触发
+      // SetWindowPos 并打断 Windows 的模态移动循环，表现为窗口"拖不动"。
+      let inMoveLoop = false;
+      window.hookWindowMessage(WM_ENTERSIZEMOVE, () => {
+        inMoveLoop = true;
+      });
+      window.hookWindowMessage(WM_EXITSIZEMOVE, () => {
+        inMoveLoop = false;
+        this.forceReapplyAlwaysOnTop(window);
+      });
       window.hookWindowMessage(WM_WINDOWPOSCHANGED, () => {
-        if (reapplying || window.isDestroyed()) return;
+        if (reapplying || inMoveLoop || window.isDestroyed()) return;
         reapplying = true;
         try {
           this.forceReapplyAlwaysOnTop(window);

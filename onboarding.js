@@ -41,7 +41,7 @@
   function refreshStepper() {
     const total = stepScreens.length;
     const current = state.step + 1;
-    stepBadge.textContent = `Step ${current} of ${total}`;
+    stepBadge.textContent = `第 ${current} 步 / 共 ${total} 步`;
     stepperDots.forEach((dot, i) => {
       dot.classList.remove('active', 'done');
       if (i < state.step) dot.classList.add('done');
@@ -63,9 +63,9 @@
     nextBtn.disabled = false;
     nextBtn.classList.remove('success');
     nextBtn.classList.add('primary');
-    if (name === 'welcome') nextBtn.innerHTML = 'Get started <i class="fas fa-arrow-right"></i>';
-    else if (name === 'finish') nextBtn.innerHTML = 'Finish <i class="fas fa-check"></i>';
-    else nextBtn.innerHTML = 'Continue <i class="fas fa-arrow-right"></i>';
+    if (name === 'welcome') nextBtn.innerHTML = '开始使用 <i class="fas fa-arrow-right"></i>';
+    else if (name === 'finish') nextBtn.innerHTML = '完成 <i class="fas fa-check"></i>';
+    else nextBtn.innerHTML = '继续 <i class="fas fa-arrow-right"></i>';
     if (skipBtn) skipBtn.style.display = 'none';
   }
 
@@ -121,7 +121,7 @@
     } else if (keyStatus.classList.contains('success')) {
       // Keep success state — they had a valid key, may be editing
     } else {
-      setKeyStatus('idle', 'Key entered');
+      setKeyStatus('idle', '已填写 Key');
     }
   });
 
@@ -155,24 +155,24 @@
     const rows = [];
     rows.push({
       label: '<i class="fas fa-key"></i> DeepSeek API',
-      value: (state.deepseekKey || state.deepseekConfigured) ? 'Configured' : 'Missing',
+      value: (state.deepseekKey || state.deepseekConfigured) ? '已配置' : '未配置',
       cls: (state.deepseekKey || state.deepseekConfigured) ? 'ok' : 'skip',
     });
     if (state.speechProvider === 'doubao') {
       rows.push({
-        label: '<i class="fas fa-microphone"></i> Speech',
-        value: state.doubaoApiKey ? 'Doubao' : 'Doubao (configure in Settings)',
+        label: '<i class="fas fa-microphone"></i> 语音识别',
+        value: state.doubaoApiKey ? '豆包' : '豆包（需在设置中补充配置）',
         cls: 'ok',
       });
     } else {
       rows.push({
-        label: '<i class="fas fa-microphone"></i> Speech',
-        value: 'Skipped (configure later)',
+        label: '<i class="fas fa-microphone"></i> 语音识别',
+        value: '已跳过（稍后配置）',
         cls: 'skip',
       });
     }
     rows.push({
-      label: '<i class="fas fa-file-lines"></i> Config saved to',
+      label: '<i class="fas fa-file-lines"></i> 配置保存至',
       value: '.env',
       cls: 'ok',
     });
@@ -188,9 +188,9 @@
 
   $('#starBtn').addEventListener('click', () => {
     if (window.electronAPI && window.electronAPI.openExternal) {
-      window.electronAPI.openExternal('https://github.com/TechyCSR/OpenCluely');
+      window.electronAPI.openExternal('https://github.com/YuzhiboXionger/OpenCluely-main');
     } else {
-      window.open('https://github.com/TechyCSR/OpenCluely', '_blank');
+      window.open('https://github.com/YuzhiboXionger/OpenCluely-main', '_blank');
     }
   });
   $('#skipStarBtn').addEventListener('click', () => {
@@ -207,7 +207,7 @@
   nextBtn.addEventListener('click', async () => {
     const name = currentScreenName();
     if (!canAdvance()) {
-      if (name === 'apikey') setKeyStatus('error', 'Enter a DeepSeek API key');
+      if (name === 'apikey') setKeyStatus('error', '请填写 DeepSeek API Key');
       return;
     }
 
@@ -269,8 +269,8 @@
     window.electronAPI.getFirstRunStatus().then((s) => {
       if (s && s.deepseekConfigured) {
         state.deepseekConfigured = true;
-        setKeyStatus('success', 'Already configured — click Continue');
-        deepseekInput.placeholder = '•••••••••••••••• (already set)';
+        setKeyStatus('success', '已配置，点击「继续」');
+        deepseekInput.placeholder = '••••••••••••••••（已配置）';
       }
     }).catch(() => {});
   }

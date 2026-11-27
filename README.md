@@ -100,6 +100,26 @@ OpenCluely 是一款基于 Electron 的桌面应用，面向技术面试与刷�
 DEEPSEEK_API_KEY=sk-... ./setup.sh  # 直接把密钥写入 .env
 ```
 
+## 开发者打包（Windows）
+
+在项目根目录用 PowerShell 依次执行：
+
+```powershell
+$env:ELECTRON_BUILDER_BINARIES_MIRROR="https://npmmirror.com/mirrors/electron-builder-binaries/"
+
+npm install
+
+npx electron-builder --win nsis --x64
+```
+
+说明：
+
+- 第一条把构建资源（winCodeSign、NSIS 等）切换到国内镜像，避免从 GitHub 下载超时；只对当前终端窗口有效。
+- 第二条安装依赖，会自动执行 `electron-builder install-app-deps`。
+- 第三条生成 x64 的 NSIS 安装包，产物在 `dist\OpenCluely-Setup-<version>.exe`；`dist\win-unpacked\OpenCluely.exe` 可直接运行，用于快速验证。
+- 重新打包前请先关闭正在运行的应用，并建议删除 `dist` 目录，避免旧文件残留。
+- 首次打包若报 `Cannot create symbolic link`（winCodeSign 解压失败），请以管理员身份运行 PowerShell，或开启 Windows「开发者模式」后重试。
+
 ## 配置
 
 配置来自项目根目录的 `.env`（由 `env.example` 生成）。唯一必填项是 DeepSeek 密钥。

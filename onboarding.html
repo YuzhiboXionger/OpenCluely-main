@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to OpenCluely</title>
+    <title>欢迎使用 OpenCluely</title>
     <link rel="stylesheet" href="./assests/vendor/fontawesome/all.min.css">
     <style>
         *, *::before, *::after {
@@ -72,6 +72,7 @@
             flex-shrink: 0;
             position: relative;
             z-index: 1;
+            -webkit-app-region: drag;
         }
         .brand {
             display: flex;
@@ -625,7 +626,7 @@
                 <div class="brand-dot"></div>
                 OpenCluely
             </div>
-            <div class="step-badge" id="stepBadge">Step 1 of 4</div>
+            <div class="step-badge" id="stepBadge">第 1 步 / 共 4 步</div>
         </div>
 
         <!-- ── Stepper ── -->
@@ -643,27 +644,26 @@
             <section class="screen active" data-screen="welcome">
                 <div class="hero">
                     <div class="hero-logo"><i class="fas fa-bolt"></i></div>
-                    <h1>Welcome to OpenCluely</h1>
+                    <h1>欢迎使用 OpenCluely</h1>
                     <p class="tagline">
-                        Your AI-powered interview &amp; problem-solving copilot.
-                        Let's get you set up in about a minute.
+                        你的 AI 面试与解题助手，大约一分钟即可完成初始配置。
                     </p>
                     <div class="feature-row">
-                        <div class="feature-pill"><i class="fas fa-keyboard"></i> Live answers</div>
-                        <div class="feature-pill"><i class="fas fa-microphone"></i> Voice input</div>
-                        <div class="feature-pill"><i class="fas fa-shield-halved"></i> Local &amp; private</div>
+                        <div class="feature-pill"><i class="fas fa-keyboard"></i> 实时答题</div>
+                        <div class="feature-pill"><i class="fas fa-microphone"></i> 语音输入</div>
+                        <div class="feature-pill"><i class="fas fa-shield-halved"></i> 本地存储 · 隐私安全</div>
                     </div>
                     <button class="btn primary hero-cta" id="heroCtaBtn" type="button">
-                        Get Started <i class="fas fa-arrow-right"></i>
+                        开始使用 <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
             </section>
 
             <!-- SCREEN 2: API Key -->
             <section class="screen" data-screen="apikey">
-                <h1>Connect DeepSeek</h1>
+                <h1>连接 DeepSeek</h1>
                 <p class="subtitle">
-                    OpenCluely uses DeepSeek to generate answers. You'll need an API key.
+                    OpenCluely 使用 DeepSeek 生成回答，需要填写一个 API Key。
                 </p>
 
                 <div class="field">
@@ -678,20 +678,20 @@
                             autocomplete="off"
                             spellcheck="false"
                         >
-                        <button class="toggle-vis" id="toggleVis" type="button" title="Show / hide">
+                        <button class="toggle-vis" id="toggleVis" type="button" title="显示 / 隐藏">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
                     <div class="hint">
-                        Don't have one? Get a key at
+                        还没有 Key？前往
                         <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
                             platform.deepseek.com/api_keys
-                        </a>.
-                        It's stored locally in <code>.env</code> — never sent anywhere except DeepSeek.
+                        </a>
+                        获取。Key 只保存在本机的 <code>.env</code> 文件中，除 DeepSeek 外不会发送到任何地方。
                     </div>
                     <div id="keyStatus" class="status-pill idle" style="display:none;">
                         <i class="fas fa-circle-info"></i>
-                        <span class="text">Enter your key above</span>
+                        <span class="text">请在上方填入 Key</span>
                     </div>
                 </div>
 
@@ -699,19 +699,18 @@
 
             <!-- SCREEN 3: Speech -->
             <section class="screen" data-screen="speech">
-                <h1>Speech Recognition</h1>
+                <h1>语音识别</h1>
                 <p class="subtitle">
-                    How would you like to capture audio? You can change this later in Settings.
+                    选择语音的采集方式。之后可以随时在设置中修改。
                 </p>
 
                 <div class="choice-list" id="speechChoices">
                     <div class="choice-card" data-value="doubao">
                         <div class="choice-icon"><i class="fas fa-microphone"></i></div>
                         <div class="choice-text">
-                            <div class="choice-title">Doubao Speech (豆包)</div>
+                            <div class="choice-title">豆包语音识别</div>
                             <div class="choice-desc">
-                                Volcengine streaming speech recognition 2.0. Low latency and
-                                accurate for Chinese. Needs a Doubao API key.
+                                火山引擎流式语音识别 2.0，中文识别准确、延迟低，需要豆包 API Key。
                             </div>
                         </div>
                         <div class="choice-radio"></div>
@@ -719,9 +718,9 @@
                     <div class="choice-card" data-value="skip">
                         <div class="choice-icon"><i class="fas fa-forward"></i></div>
                         <div class="choice-text">
-                            <div class="choice-title">Skip for now</div>
+                            <div class="choice-title">暂时跳过</div>
                             <div class="choice-desc">
-                                Set this up later in Settings. You can still type messages into the chat window.
+                                之后可在设置中配置。你仍然可以在聊天窗口输入文字。
                             </div>
                         </div>
                         <div class="choice-radio"></div>
@@ -731,13 +730,13 @@
                 <!-- Inline Doubao key entry (revealed only if Doubao selected) -->
                 <div id="doubaoPanel" style="display:none; margin-top: 14px;">
                     <div class="field">
-                        <label for="doubaoApiKey">Doubao API Key</label>
+                        <label for="doubaoApiKey">豆包 API Key</label>
                         <div class="input-wrap">
                             <i class="fas fa-key icon"></i>
-                            <input type="password" id="doubaoApiKey" class="input" placeholder="Doubao API key" autocomplete="off">
+                            <input type="password" id="doubaoApiKey" class="input" placeholder="豆包 API Key" autocomplete="off">
                         </div>
                         <div class="hint">
-                            App ID + Access Token can also be configured later in Settings.
+                            App ID + Access Token 也可以在设置中配置。
                         </div>
                     </div>
                 </div>
@@ -747,9 +746,9 @@
             <section class="screen" data-screen="finish">
                 <div class="finish-card">
                     <div class="check"><i class="fas fa-check"></i></div>
-                    <h1>You're all set!</h1>
+                    <h1>配置完成！</h1>
                     <p class="subtitle" style="margin-bottom: 18px;">
-                        Here's what we configured. You can change any of this later in Settings.
+                        下面是本次的配置内容，之后可以随时在设置中修改。
                     </p>
 
                     <div class="summary-list" id="summaryList">
@@ -758,17 +757,17 @@
 
                     <div class="star-card">
                         <div class="star-icon"><i class="fas fa-star"></i></div>
-                        <h3>Enjoying OpenCluely?</h3>
+                        <h3>喜欢 OpenCluely 吗？</h3>
                         <p>
-                            If this saved you time in an interview or a coding session,
-                            a quick ⭐ on GitHub helps others find it.
+                            如果它帮你在面试或刷题时节省了时间，
+                            给 GitHub 点个 ⭐ 能让更多人发现它。
                         </p>
                         <div class="actions">
                             <button class="btn primary" id="starBtn" type="button">
-                                <i class="fab fa-github"></i> Star on GitHub
+                                <i class="fab fa-github"></i> 去 GitHub 点星
                             </button>
                             <button class="btn ghost" id="skipStarBtn" type="button">
-                                Maybe later
+                                以后再说
                             </button>
                         </div>
                     </div>
@@ -779,14 +778,14 @@
         <!-- ── Navigation ── -->
         <div class="nav">
             <button class="btn ghost" id="backBtn" type="button" style="visibility:hidden;">
-                <i class="fas fa-arrow-left"></i> Back
+                <i class="fas fa-arrow-left"></i> 上一步
             </button>
             <div class="nav-right">
                 <button class="btn ghost" id="skipBtn" type="button" style="display:none;">
-                    Skip
+                    跳过
                 </button>
                 <button class="btn primary" id="nextBtn" type="button">
-                    Get started <i class="fas fa-arrow-right"></i>
+                    开始使用 <i class="fas fa-arrow-right"></i>
                 </button>
             </div>
         </div>
@@ -794,9 +793,9 @@
         <!-- ── Footer ── -->
         <div class="footer">
             <div class="dev">
-                Built by <a href="https://techycsr.dev" target="_blank" rel="noreferrer"><strong>@TechyCSR</strong></a>
+                由 <a href="https://techycsr.dev" target="_blank" rel="noreferrer"><strong>@TechyCSR</strong></a> 开发
                 <span style="opacity:0.5; margin: 0 8px;">·</span>
-                <a href="https://github.com/TechyCSR/OpenCluely" target="_blank" rel="noreferrer">
+                <a href="https://github.com/YuzhiboXionger/OpenCluely-main" target="_blank" rel="noreferrer">
                     <i class="fab fa-github"></i> GitHub
                 </a>
             </div>
